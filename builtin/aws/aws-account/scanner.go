@@ -11,12 +11,27 @@ import (
 
 var (
 	AllScanners = []ResourceScanner{
+		// network
 		ScanNetworks,
+
+		// cluster
 		ScanEcsClusters,
-		ScanRdsDatabases,
+
+		// ingress
+		ScanLoadBalancers,
 		ScanApiGateways,
 		ScanCdns,
-		ScanLoadBalancers,
+
+		// datastore
+		ScanS3Buckets,
+		ScanEfsFileSystems,
+		ScanRdsDatabases,
+		ScanElastiCacheClusters,
+		ScanMskClusters,
+		ScanMqBrokers,
+		ScanSqsQueues,
+		ScanSnsTopics,
+		ScanOpenSearchDomains,
 	}
 )
 

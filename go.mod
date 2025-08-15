@@ -10,9 +10,18 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/cloudfront v1.52.0
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.243.0
 	github.com/aws/aws-sdk-go-v2/service/ecs v1.63.0
+	github.com/aws/aws-sdk-go-v2/service/efs v1.39.0
+	github.com/aws/aws-sdk-go-v2/service/elasticache v1.49.0
 	github.com/aws/aws-sdk-go-v2/service/elasticloadbalancing v1.32.0
 	github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2 v1.49.0
+	github.com/aws/aws-sdk-go-v2/service/kafka v1.42.0
+	github.com/aws/aws-sdk-go-v2/service/mq v1.32.0
+	github.com/aws/aws-sdk-go-v2/service/opensearch v1.51.0
 	github.com/aws/aws-sdk-go-v2/service/rds v1.103.0
+	github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi v1.29.0
+	github.com/aws/aws-sdk-go-v2/service/s3 v1.87.0
+	github.com/aws/aws-sdk-go-v2/service/sns v1.37.0
+	github.com/aws/aws-sdk-go-v2/service/sqs v1.41.0
 	github.com/aws/aws-sdk-go-v2/service/sts v1.37.0
 	gopkg.in/nullstone-io/go-api-client.v0 v0.0.0-20250814151520-6962f4e47dd6
 )
@@ -20,10 +29,14 @@ require (
 require (
 	github.com/agext/levenshtein v1.2.1 // indirect
 	github.com/apparentlymart/go-textseg/v12 v12.0.0 // indirect
+	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.0 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.3 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.3 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/v4a v1.4.3 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.0 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.8.3 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.3 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.19.3 // indirect
 	github.com/aws/smithy-go v1.22.5 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
