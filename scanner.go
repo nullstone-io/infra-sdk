@@ -6,7 +6,6 @@ import (
 )
 
 type ScanResource struct {
-	Type       string           `json:"type"`
 	UniqueId   string           `json:"uniqueId"`
 	Name       string           `json:"name"`
 	Taxonomy   ResourceTaxonomy `json:"taxonomy"`

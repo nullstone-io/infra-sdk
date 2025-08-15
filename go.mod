@@ -5,8 +5,13 @@ go 1.24.0
 require (
 	github.com/aws/aws-sdk-go-v2 v1.38.0
 	github.com/aws/aws-sdk-go-v2/credentials v1.18.4
+	github.com/aws/aws-sdk-go-v2/service/apigateway v1.34.0
+	github.com/aws/aws-sdk-go-v2/service/apigatewayv2 v1.31.0
+	github.com/aws/aws-sdk-go-v2/service/cloudfront v1.52.0
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.243.0
 	github.com/aws/aws-sdk-go-v2/service/ecs v1.63.0
+	github.com/aws/aws-sdk-go-v2/service/elasticloadbalancing v1.32.0
+	github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2 v1.49.0
 	github.com/aws/aws-sdk-go-v2/service/rds v1.103.0
 	github.com/aws/aws-sdk-go-v2/service/sts v1.37.0
 	gopkg.in/nullstone-io/go-api-client.v0 v0.0.0-20250814151520-6962f4e47dd6

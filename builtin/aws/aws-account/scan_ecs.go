@@ -78,7 +78,6 @@ func ScanEcsClusters(ctx context.Context, config aws.Config) ([]infra_sdk.ScanRe
 
 		name := aws.ToString(cluster.ClusterName)
 		resources = append(resources, infra_sdk.ScanResource{
-			Type:     "ecs-cluster",
 			UniqueId: aws.ToString(cluster.ClusterArn),
 			Name:     name,
 			Taxonomy: infra_sdk.ResourceTaxonomy{

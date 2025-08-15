@@ -30,7 +30,6 @@ func ScanNetworks(ctx context.Context, config aws.Config) ([]infra_sdk.ScanResou
 		}
 
 		resources = append(resources, infra_sdk.ScanResource{
-			Type:     "vpc",
 			UniqueId: *vpc.VpcId,
 			Name:     name,
 			Taxonomy: infra_sdk.ResourceTaxonomy{

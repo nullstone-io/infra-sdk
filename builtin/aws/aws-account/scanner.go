@@ -14,6 +14,9 @@ var (
 		ScanNetworks,
 		ScanEcsClusters,
 		ScanRdsDatabases,
+		ScanApiGateways,
+		ScanCdns,
+		ScanLoadBalancers,
 	}
 )
 

@@ -63,7 +63,6 @@ func scanRdsInstances(ctx context.Context, client *rds.Client, resources *[]infr
 			}
 
 			*resources = append(*resources, infra_sdk.ScanResource{
-				Type:     "datastore",
 				UniqueId: *instance.DBInstanceArn,
 				Name:     *name,
 				Taxonomy: infra_sdk.ResourceTaxonomy{
@@ -140,11 +139,10 @@ func scanRdsClusters(ctx context.Context, client *rds.Client, resources *[]infra
 			}
 
 			*resources = append(*resources, infra_sdk.ScanResource{
-				Type:     "datastore",
 				UniqueId: *cluster.DBClusterArn,
 				Name:     *name,
 				Taxonomy: infra_sdk.ResourceTaxonomy{
-					Category:    "datastore",
+					Category:    types.CategoryDatastore,
 					Subcategory: "",
 					Platform:    dbType,
 					Subplatform: dbSubtype,
