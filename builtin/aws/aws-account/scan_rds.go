@@ -71,6 +71,8 @@ func scanRdsInstances(ctx context.Context, client *rds.Client, resources *[]infr
 					Platform:    dbType,
 					Subplatform: dbSubtype,
 				},
+				ServiceName:         "RDS",
+				ServiceResourceName: "Instance",
 				Attributes: map[string]any{
 					"identifier":        instance.DBInstanceIdentifier,
 					"engine":            instance.Engine,
@@ -147,6 +149,8 @@ func scanRdsClusters(ctx context.Context, client *rds.Client, resources *[]infra
 					Platform:    dbType,
 					Subplatform: dbSubtype,
 				},
+				ServiceName:         "RDS",
+				ServiceResourceName: "Aurora Cluster",
 				Attributes: map[string]any{
 					"identifier":          cluster.DBClusterIdentifier,
 					"engine":              cluster.Engine,

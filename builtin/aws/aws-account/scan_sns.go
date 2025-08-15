@@ -129,6 +129,8 @@ func ScanSnsTopics(ctx context.Context, config aws.Config) ([]infra_sdk.ScanReso
 				Platform:    "sns",
 				Subplatform: "",
 			},
+			ServiceName:         "SNS",
+			ServiceResourceName: "Topic",
 			Attributes: map[string]any{
 				"arn":                         topic.TopicArn,
 				"owner":                       attrs.Attributes["Owner"],

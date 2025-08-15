@@ -87,6 +87,8 @@ func ScanS3Buckets(ctx context.Context, config aws.Config) ([]infra_sdk.ScanReso
 				Platform:    "s3",
 				Subplatform: "",
 			},
+			ServiceName:         "S3",
+			ServiceResourceName: "Bucket",
 			Attributes: map[string]any{
 				"arn":           arn,
 				"creation_date": bucket.CreationDate,

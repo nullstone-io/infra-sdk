@@ -141,6 +141,8 @@ func ScanMqBrokers(ctx context.Context, config aws.Config) ([]infra_sdk.ScanReso
 					Platform:    engineType,
 					Subplatform: "amazon-mq",
 				},
+				ServiceName:         "AmazonMQ",
+				ServiceResourceName: "Broker",
 				Attributes: map[string]any{
 					"arn":                           descOutput.BrokerArn,
 					"broker_id":                     descOutput.BrokerId,

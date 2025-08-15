@@ -147,6 +147,8 @@ func ScanElastiCacheClusters(ctx context.Context, config aws.Config) ([]infra_sd
 				Platform:    engine, // redis or memcached
 				Subplatform: "elasticache",
 			},
+			ServiceName:         "ElastiCache",
+			ServiceResourceName: "Cluster",
 			Attributes: map[string]any{
 				"arn":                          cluster.ARN,
 				"engine":                       engine,
@@ -207,6 +209,8 @@ func ScanElastiCacheClusters(ctx context.Context, config aws.Config) ([]infra_sd
 					Platform:    "redis", // Replication groups are Redis-specific
 					Subplatform: "elasticache",
 				},
+				ServiceName:         "ElastiCache",
+				ServiceResourceName: "Cluster",
 				Attributes: map[string]any{
 					"arn":                      rg.ARN,
 					"status":                   rg.Status,

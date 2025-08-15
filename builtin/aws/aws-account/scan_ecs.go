@@ -46,8 +46,10 @@ func ScanEcsClusters(ctx context.Context, config aws.Config) ([]infra_sdk.ScanRe
 
 		// Determine cluster type (EC2 or Fargate)
 		clusterType := "ec2"
+		serviceName := "ECS"
 		if slices.Contains(capacityProviders, "FARGATE") {
 			clusterType = "fargate"
+			serviceName = "Fargate"
 		}
 
 		// Collect cluster settings
@@ -78,6 +80,8 @@ func ScanEcsClusters(ctx context.Context, config aws.Config) ([]infra_sdk.ScanRe
 				Platform:    "ecs",
 				Subplatform: clusterType,
 			},
+			ServiceName:         serviceName,
+			ServiceResourceName: "Cluster",
 			Attributes: map[string]any{
 				"status":             cluster.Status,
 				"running_tasks":      cluster.RunningTasksCount,

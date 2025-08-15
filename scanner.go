@@ -6,10 +6,12 @@ import (
 )
 
 type ScanResource struct {
-	UniqueId   string           `json:"uniqueId"`
-	Name       string           `json:"name"`
-	Taxonomy   ResourceTaxonomy `json:"taxonomy"`
-	Attributes map[string]any   `json:"attributes"`
+	UniqueId            string           `json:"uniqueId"`
+	Name                string           `json:"name"`
+	Taxonomy            ResourceTaxonomy `json:"taxonomy"`
+	ServiceName         string           `json:"serviceName"`
+	ServiceResourceName string           `json:"serviceResourceName"`
+	Attributes          map[string]any   `json:"attributes"`
 }
 
 type ResourceTaxonomy struct {

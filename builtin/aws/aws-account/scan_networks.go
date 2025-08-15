@@ -37,6 +37,8 @@ func ScanNetworks(ctx context.Context, config aws.Config) ([]infra_sdk.ScanResou
 				Subcategory: "",
 				Platform:    "vpc",
 			},
+			ServiceName:         "VPC",
+			ServiceResourceName: "Network",
 			Attributes: map[string]any{
 				"cidr_block":       vpc.CidrBlock,
 				"is_default":       vpc.IsDefault,

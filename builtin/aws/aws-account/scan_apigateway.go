@@ -84,6 +84,8 @@ func getRestApis(ctx context.Context, client *apigateway.Client) ([]infra_sdk.Sc
 				Platform:    "api-gateway",
 				Subplatform: "rest-api",
 			},
+			ServiceName:         "API Gateway",
+			ServiceResourceName: "REST API",
 			Attributes: map[string]any{
 				"endpoint_configuration": api.EndpointConfiguration,
 				"created_date":           api.CreatedDate,
@@ -159,6 +161,8 @@ func getHttpApis(ctx context.Context, config aws.Config) ([]infra_sdk.ScanResour
 				Platform:    "api-gateway",
 				Subplatform: "http-api",
 			},
+			ServiceName:         "API Gateway",
+			ServiceResourceName: "HTTP API",
 			Attributes: map[string]any{
 				"api_endpoint":                 apiEndpoint,
 				"protocol_type":                protocolType,

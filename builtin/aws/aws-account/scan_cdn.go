@@ -83,6 +83,8 @@ func getCloudFrontDistributions(ctx context.Context, client *cloudfront.Client) 
 				Platform:    "cdn",
 				Subplatform: "cloudfront",
 			},
+			ServiceName:         "CloudFront",
+			ServiceResourceName: "Distribution",
 			Attributes: map[string]any{
 				"status":          dist.Status,
 				"enabled":         dist.Enabled,

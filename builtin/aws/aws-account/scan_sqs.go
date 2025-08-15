@@ -101,6 +101,8 @@ func ScanSqsQueues(ctx context.Context, config aws.Config) ([]infra_sdk.ScanReso
 				Platform:    "sqs",
 				Subplatform: "",
 			},
+			ServiceName:         "SQS",
+			ServiceResourceName: "Queue",
 			Attributes: map[string]any{
 				"url":                            queueUrl,
 				"arn":                            attrOutput.Attributes[string(sqstypes.QueueAttributeNameQueueArn)],

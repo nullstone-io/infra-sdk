@@ -85,6 +85,8 @@ func scanClassicLoadBalancers(ctx context.Context, config aws.Config) ([]infra_s
 				Platform:    "load-balancer",
 				Subplatform: "elb",
 			},
+			ServiceName:         "EC2",
+			ServiceResourceName: "Classic Load Balancer",
 			Attributes: map[string]any{
 				"dns_name":        dnsName,
 				"scheme":          scheme,
@@ -168,6 +170,8 @@ func scanElbv2LoadBalancers(ctx context.Context, config aws.Config) ([]infra_sdk
 				Platform:    "load-balancer",
 				Subplatform: subplatform,
 			},
+			ServiceName:         "EC2",
+			ServiceResourceName: "Load Balancer",
 			Attributes: map[string]any{
 				"dns_name":           lb.DNSName,
 				"scheme":             lb.Scheme,
