@@ -50,14 +50,6 @@ func ScanEcsClusters(ctx context.Context, config aws.Config) ([]infra_sdk.ScanRe
 			clusterType = "fargate"
 		}
 
-		// Check for container insights
-		for _, setting := range cluster.Settings {
-			if setting.Name == ecstypes.ClusterSettingNameContainerInsights && aws.ToString(setting.Value) == "enabled" {
-				clusterType += "-insights"
-				break
-			}
-		}
-
 		// Collect cluster settings
 		settings := make(map[string]any)
 		for _, setting := range cluster.Settings {
