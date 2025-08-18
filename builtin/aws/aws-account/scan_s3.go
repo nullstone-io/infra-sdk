@@ -86,6 +86,7 @@ func ScanS3Buckets(ctx context.Context, config aws.Config) ([]infra_sdk.ScanReso
 				Category:    types.CategoryDatastore,
 				Platform:    "s3",
 				Subplatform: "",
+				Provider:    "aws",
 			},
 			ServiceName:         "S3",
 			ServiceResourceName: "Bucket",

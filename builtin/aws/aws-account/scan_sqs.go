@@ -100,6 +100,7 @@ func ScanSqsQueues(ctx context.Context, config aws.Config) ([]infra_sdk.ScanReso
 				Category:    types.CategoryDatastore,
 				Platform:    "sqs",
 				Subplatform: "",
+				Provider:    "aws",
 			},
 			ServiceName:         "SQS",
 			ServiceResourceName: "Queue",

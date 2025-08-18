@@ -36,6 +36,7 @@ func ScanNetworks(ctx context.Context, config aws.Config) ([]infra_sdk.ScanResou
 				Category:    types.CategoryNetwork,
 				Subcategory: "",
 				Platform:    "vpc",
+				Provider:    "aws",
 			},
 			ServiceName:         "VPC",
 			ServiceResourceName: "Network",

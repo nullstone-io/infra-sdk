@@ -124,6 +124,7 @@ func ScanOpenSearchDomains(ctx context.Context, config aws.Config) ([]infra_sdk.
 					Category:    types.CategoryDatastore,
 					Platform:    "elasticsearch",
 					Subplatform: "opensearch",
+					Provider:    "aws",
 				},
 				ServiceName:         "OpenSearch",
 				ServiceResourceName: "Domain",

@@ -82,6 +82,7 @@ func getCloudFrontDistributions(ctx context.Context, client *cloudfront.Client) 
 				Category:    types.CategoryIngress,
 				Platform:    "cdn",
 				Subplatform: "cloudfront",
+				Provider:    "aws",
 			},
 			ServiceName:         "CloudFront",
 			ServiceResourceName: "Distribution",

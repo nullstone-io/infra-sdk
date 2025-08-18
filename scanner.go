@@ -17,6 +17,7 @@ type ScanResource struct {
 type ResourceTaxonomy struct {
 	Category    types.CategoryName    `json:"category"`
 	Subcategory types.SubcategoryName `json:"subcategory"`
+	Provider    string                `json:"provider"`
 	Platform    string                `json:"platform"`
 	Subplatform string                `json:"subplatform"`
 }

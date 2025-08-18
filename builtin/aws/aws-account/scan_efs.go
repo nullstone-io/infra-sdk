@@ -131,6 +131,7 @@ func ScanEfsFileSystems(ctx context.Context, config aws.Config) ([]infra_sdk.Sca
 				Category:    types.CategoryDatastore,
 				Platform:    "nfs",
 				Subplatform: "efs",
+				Provider:    "aws",
 			},
 			ServiceName:         "EFS",
 			ServiceResourceName: "File System",

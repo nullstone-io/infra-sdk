@@ -128,6 +128,7 @@ func ScanSnsTopics(ctx context.Context, config aws.Config) ([]infra_sdk.ScanReso
 				Category:    types.CategoryDatastore,
 				Platform:    "sns",
 				Subplatform: "",
+				Provider:    "aws",
 			},
 			ServiceName:         "SNS",
 			ServiceResourceName: "Topic",

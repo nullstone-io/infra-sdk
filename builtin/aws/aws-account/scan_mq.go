@@ -140,6 +140,7 @@ func ScanMqBrokers(ctx context.Context, config aws.Config) ([]infra_sdk.ScanReso
 					Category:    types.CategoryDatastore,
 					Platform:    engineType,
 					Subplatform: "amazon-mq",
+					Provider:    "aws",
 				},
 				ServiceName:         "AmazonMQ",
 				ServiceResourceName: "Broker",

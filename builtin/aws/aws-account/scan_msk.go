@@ -90,6 +90,7 @@ func ScanMskClusters(ctx context.Context, config aws.Config) ([]infra_sdk.ScanRe
 				Category:    types.CategoryDatastore,
 				Platform:    "kafka",
 				Subplatform: "msk",
+				Provider:    "aws",
 			},
 			ServiceName:         "MSK",
 			ServiceResourceName: "Cluster",

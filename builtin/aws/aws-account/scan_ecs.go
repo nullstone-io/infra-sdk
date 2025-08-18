@@ -79,6 +79,7 @@ func ScanEcsClusters(ctx context.Context, config aws.Config) ([]infra_sdk.ScanRe
 				Subcategory: "",
 				Platform:    "ecs",
 				Subplatform: clusterType,
+				Provider:    "aws",
 			},
 			ServiceName:         serviceName,
 			ServiceResourceName: "Cluster",
