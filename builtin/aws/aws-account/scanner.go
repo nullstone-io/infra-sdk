@@ -11,6 +11,9 @@ import (
 
 var (
 	AllScanners = []ResourceScanner{
+		// domain/subdomain
+		ScanRoute53,
+
 		// network
 		ScanNetworks,
 

@@ -19,10 +19,13 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/opensearch v1.51.0
 	github.com/aws/aws-sdk-go-v2/service/rds v1.103.0
 	github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi v1.29.0
+	github.com/aws/aws-sdk-go-v2/service/route53 v1.56.1
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.87.0
 	github.com/aws/aws-sdk-go-v2/service/sns v1.37.0
 	github.com/aws/aws-sdk-go-v2/service/sqs v1.41.0
 	github.com/aws/aws-sdk-go-v2/service/sts v1.37.0
+	github.com/aws/smithy-go v1.22.5
+	golang.org/x/net v0.0.0-20200301022130-244492dfa37a
 	gopkg.in/nullstone-io/go-api-client.v0 v0.0.0-20250814151520-6962f4e47dd6
 )
 
@@ -37,7 +40,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.8.3 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.3 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.19.3 // indirect
-	github.com/aws/smithy-go v1.22.5 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/hashicorp/hcl/v2 v2.6.0 // indirect
