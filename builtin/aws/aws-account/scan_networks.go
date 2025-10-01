@@ -2,6 +2,7 @@ package aws_account
 
 import (
 	"context"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	infra_sdk "github.com/nullstone-io/infra-sdk"
@@ -17,12 +18,15 @@ func ScanNetworks(ctx context.Context, config aws.Config) ([]infra_sdk.ScanResou
 
 	resources := make([]infra_sdk.ScanResource, 0)
 	for _, vpc := range output.Vpcs {
+		tags := map[string]string{}
 		name := ""
 		// Extract Name tag if it exists
 		for _, tag := range vpc.Tags {
 			if *tag.Key == "Name" {
 				name = *tag.Value
 				break
+			} else {
+				tags[*tag.Key] = *tag.Value
 			}
 		}
 		if name == "" {
@@ -45,7 +49,7 @@ func ScanNetworks(ctx context.Context, config aws.Config) ([]infra_sdk.ScanResou
 				"is_default":       vpc.IsDefault,
 				"state":            vpc.State,
 				"instance_tenancy": vpc.InstanceTenancy,
-				"tags":             vpc.Tags,
+				"tags":             tags,
 			},
 		})
 	}
