@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancing"
 	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
@@ -151,6 +152,10 @@ func scanElbv2LoadBalancers(ctx context.Context, config aws.Config) ([]infra_sdk
 		listenerOutput, _ := client.DescribeListeners(ctx, &elasticloadbalancingv2.DescribeListenersInput{
 			LoadBalancerArn: lb.LoadBalancerArn,
 		})
+		var listeners []elbv2types.Listener
+		if listenerOutput != nil {
+			listeners = listenerOutput.Listeners
+		}
 
 		// Determine the subplatform based on the load balancer type
 		subplatform := ""
@@ -181,7 +186,7 @@ func scanElbv2LoadBalancers(ctx context.Context, config aws.Config) ([]infra_sdk
 				"created_time":       lb.CreatedTime,
 				"security_groups":    lb.SecurityGroups,
 				"ip_address_type":    lb.IpAddressType,
-				"listeners":          listenerOutput.Listeners,
+				"listeners":          listeners,
 				"availability_zones": lb.AvailabilityZones,
 				"type":               lb.Type,
 				"tags":               tags,
