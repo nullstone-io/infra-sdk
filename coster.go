@@ -16,7 +16,7 @@ const (
 )
 
 type Coster interface {
-	GetCosts(ctx context.Context, query CostQuery) (CostResult, error)
+	GetCosts(ctx context.Context, query CostQuery) (*CostResult, error)
 }
 
 type CostQuery struct {
