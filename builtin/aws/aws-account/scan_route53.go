@@ -3,14 +3,14 @@ package aws_account
 import (
 	"context"
 	"fmt"
+	"strings"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/route53"
 	r53types "github.com/aws/aws-sdk-go-v2/service/route53/types"
-	"github.com/aws/smithy-go/ptr"
 	infra_sdk "github.com/nullstone-io/infra-sdk"
 	"golang.org/x/net/publicsuffix"
 	"gopkg.in/nullstone-io/go-api-client.v0/types"
-	"strings"
 )
 
 // ScanRoute53 scans Route53 hosted zones and returns them as scan resources
@@ -85,7 +85,7 @@ func getHostedZoneTags(ctx context.Context, client *route53.Client, zoneId strin
 	}
 
 	for _, tag := range output.ResourceTagSet.Tags {
-		tags[ptr.ToString(tag.Key)] = ptr.ToString(tag.Value)
+		tags[unptr(tag.Key)] = unptr(tag.Value)
 	}
 
 	return tags, nil
