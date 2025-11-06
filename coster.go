@@ -20,11 +20,11 @@ type Coster interface {
 }
 
 type CostQuery struct {
-	Start       time.Time       `json:"start"`
-	End         time.Time       `json:"end"`
-	Granularity CostGranularity `json:"granularity"`
-	FilterTags  []CostFilterTag `json:"filterTags"`
-	GroupTags   []CostGroupTag  `json:"groupTags"`
+	Start       time.Time            `json:"start"`
+	End         time.Time            `json:"end"`
+	Granularity CostGranularity      `json:"granularity"`
+	FilterTags  []CostFilterTag      `json:"filterTags"`
+	GroupBy     CostGroupIdentifiers `json:"groupBy"`
 }
 
 type CostFilterTag struct {
@@ -32,8 +32,33 @@ type CostFilterTag struct {
 	Values []string `json:"values"`
 }
 
-type CostGroupTag struct {
-	Key string `json:"key"`
+type CostGroupIdentifiers []CostGroupIdentifier
+
+func (s CostGroupIdentifiers) Unique() CostGroupIdentifiers {
+	result := make(CostGroupIdentifiers, 0)
+
+	visitedTags := map[string]bool{}
+	visitedDimensions := map[string]bool{}
+	for _, cur := range s {
+		if cur.TagKey != "" {
+			if _, visited := visitedTags[cur.TagKey]; !visited {
+				result = append(result, cur)
+				visitedTags[cur.TagKey] = true
+			}
+		} else if cur.Dimension != "" {
+			if _, visited := visitedDimensions[cur.Dimension]; !visited {
+				result = append(result, cur)
+				visitedDimensions[cur.Dimension] = true
+			}
+		}
+	}
+
+	return result
+}
+
+type CostGroupIdentifier struct {
+	TagKey    string `json:"tagKey,omitempty"`
+	Dimension string `json:"dimension,omitempty"`
 }
 
 type CostResult struct {
@@ -84,18 +109,18 @@ func (s CostSeriesGroupKeys) UniqueIdentifier() string {
 // If the group key is a tag, TagKey and TagValue are populated.
 // Otherwise, Name is populated.
 type CostSeriesGroupKey struct {
-	TagKey   string `json:"tagKey,omitempty"`
-	TagValue string `json:"tagValue,omitempty"`
-	Name     string `json:"name,omitempty"`
+	Name   string `json:"name"`
+	TagKey string `json:"tagKey"`
+	Value  string `json:"value"`
 }
 
 // Encode creates a single string that can be decoded consistently
-// We use `>` between tag key and tag value since it's an invalid character for aws tags, gcp labels, k8s labels, etc.
+// We use `>` between name/tag-key and value since it's an invalid character for aws tags, gcp labels, k8s labels, etc.
 func (k CostSeriesGroupKey) Encode() string {
 	if k.TagKey != "" {
-		return fmt.Sprintf("%s$%s", k.TagKey, k.TagValue)
+		return fmt.Sprintf("%s$%s", k.TagKey, k.Value)
 	}
-	return k.Name
+	return fmt.Sprintf("%s$%s", k.Name, k.Value)
 }
 
 // CostSeriesDatapoint represents a single datapoint in a cost series.

@@ -20,7 +20,7 @@ type CostResultAggregator struct {
 	CostResult *infra_sdk.CostResult
 }
 
-func (a *CostResultAggregator) AddResults(resultsByTime []cetypes.ResultByTime) error {
+func (a *CostResultAggregator) AddResults(resultsByTime []cetypes.ResultByTime, inputGroups infra_sdk.CostGroupIdentifiers) error {
 	for _, resultByTime := range resultsByTime {
 		start, end, err := a.parseWindow(resultByTime)
 		if err != nil {
@@ -28,7 +28,7 @@ func (a *CostResultAggregator) AddResults(resultsByTime []cetypes.ResultByTime) 
 		}
 
 		for _, grp := range resultByTime.Groups {
-			grpKeys := a.parseResultGroupKeys(grp.Keys)
+			grpKeys := a.parseResultGroupKeys(inputGroups, grp.Keys)
 			for metricName, metricValue := range grp.Metrics {
 				a.CostResult.AddDatapoint(metricName, grpKeys, infra_sdk.CostSeriesDatapoint{
 					Start: start,
@@ -58,19 +58,26 @@ func (a *CostResultAggregator) parseWindow(resultByTime cetypes.ResultByTime) (t
 	return start, end, nil
 }
 
-func (a *CostResultAggregator) parseResultGroupKeys(keys []string) infra_sdk.CostSeriesGroupKeys {
+func (a *CostResultAggregator) parseResultGroupKeys(inputGroups infra_sdk.CostGroupIdentifiers, keys []string) infra_sdk.CostSeriesGroupKeys {
 	sort.Strings(keys)
 
 	result := make(infra_sdk.CostSeriesGroupKeys, 0)
-	for _, key := range keys {
+	for i, key := range keys {
 		tokens := strings.SplitN(key, "$", 2)
 		if len(tokens) == 2 {
 			result = append(result, infra_sdk.CostSeriesGroupKey{
-				TagKey:   infra_sdk.MapLegacyTagToStandard(tokens[0]),
-				TagValue: tokens[1],
+				TagKey: AwsTag(tokens[0]).ToUniversal(),
+				Value:  tokens[1],
 			})
 		} else {
-			result = append(result, infra_sdk.CostSeriesGroupKey{Name: key})
+			name := fmt.Sprintf("dimension-%d", i)
+			if i < len(inputGroups) {
+				name = inputGroups[i].Dimension
+			}
+			result = append(result, infra_sdk.CostSeriesGroupKey{
+				Name:  name,
+				Value: key,
+			})
 		}
 	}
 	return result

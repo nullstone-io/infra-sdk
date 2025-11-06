@@ -45,12 +45,13 @@ func (c Coster) GetCosts(ctx context.Context, query infra_sdk.CostQuery) (*infra
 		granularity = cetypes.GranularityDaily
 	}
 
+	groupBy := query.GroupBy.Unique()
 	input := &ce.GetCostAndUsageInput{
 		TimePeriod:  period,
 		Granularity: granularity,
 		Metrics:     []string{"UnblendedCost"},
 		Filter:      costQueryToFilter(query),
-		GroupBy:     costQueryToGroupBy(query),
+		GroupBy:     costQueryToGroupBy(groupBy),
 	}
 	rawInput, _ := json.Marshal(input)
 	log.Println("input", string(rawInput))
@@ -63,7 +64,7 @@ func (c Coster) GetCosts(ctx context.Context, query infra_sdk.CostQuery) (*infra
 		if err != nil {
 			return nil, fmt.Errorf("error querying aws cost explorer: %w", err)
 		}
-		if err := aggregator.AddResults(out.ResultsByTime); err != nil {
+		if err := aggregator.AddResults(out.ResultsByTime, groupBy); err != nil {
 			return nil, fmt.Errorf("error aggregating results: %w", err)
 		}
 		if out.NextPageToken == nil || *out.NextPageToken == "" {
@@ -82,7 +83,7 @@ func costQueryToFilter(query infra_sdk.CostQuery) *cetypes.Expression {
 	if len(query.FilterTags) == 1 {
 		return &cetypes.Expression{
 			Tags: &cetypes.TagValues{
-				Key:          ptr(infra_sdk.MapStandardTagToLegacy(query.FilterTags[0].Key)),
+				Key:          ptr(UniversalTag(query.FilterTags[0].Key).ToAws()),
 				MatchOptions: []cetypes.MatchOption{cetypes.MatchOptionEquals},
 				Values:       query.FilterTags[0].Values,
 			},
@@ -93,7 +94,7 @@ func costQueryToFilter(query infra_sdk.CostQuery) *cetypes.Expression {
 	for _, filterTag := range query.FilterTags {
 		root.And = append(root.And, cetypes.Expression{
 			Tags: &cetypes.TagValues{
-				Key:          ptr(infra_sdk.MapStandardTagToLegacy(filterTag.Key)),
+				Key:          ptr(UniversalTag(filterTag.Key).ToAws()),
 				MatchOptions: []cetypes.MatchOption{cetypes.MatchOptionEquals},
 				Values:       filterTag.Values,
 			},
@@ -102,23 +103,21 @@ func costQueryToFilter(query infra_sdk.CostQuery) *cetypes.Expression {
 	return root
 }
 
-func costQueryToGroupBy(query infra_sdk.CostQuery) []cetypes.GroupDefinition {
-	if len(query.GroupTags) < 1 {
-		return nil
-	}
+func costQueryToGroupBy(groupBy infra_sdk.CostGroupIdentifiers) []cetypes.GroupDefinition {
+	var defs []cetypes.GroupDefinition
+	for _, cur := range groupBy {
+		if cur.Dimension != "" {
+			defs = append(defs, cetypes.GroupDefinition{
+				Key:  ptr(UniversalDimension(cur.Dimension).ToAws()),
+				Type: cetypes.GroupDefinitionTypeDimension,
+			})
+		} else if cur.TagKey != "" {
+			defs = append(defs, cetypes.GroupDefinition{
+				Key:  ptr(UniversalTag(cur.TagKey).ToAws()),
+				Type: cetypes.GroupDefinitionTypeTag,
+			})
+		}
 
-	// Don't allow duplicate group tags
-	unique := map[string]bool{}
-	for _, groupTag := range query.GroupTags {
-		unique[infra_sdk.MapStandardTagToLegacy(groupTag.Key)] = true
 	}
-
-	var groupBy []cetypes.GroupDefinition
-	for key := range unique {
-		groupBy = append(groupBy, cetypes.GroupDefinition{
-			Key:  ptr(key),
-			Type: cetypes.GroupDefinitionTypeTag,
-		})
-	}
-	return groupBy
+	return defs
 }

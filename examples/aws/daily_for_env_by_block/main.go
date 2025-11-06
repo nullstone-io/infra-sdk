@@ -35,15 +35,18 @@ func main() {
 		Granularity: infra_sdk.CostGranularityDaily,
 		FilterTags: []infra_sdk.CostFilterTag{
 			{
-				Key:    infra_sdk.StandardTagStack,
+				Key:    infra_sdk.UniversalTagStack,
 				Values: stacks,
 			},
 			{
-				Key:    infra_sdk.StandardTagEnv,
+				Key:    infra_sdk.UniversalTagEnv,
 				Values: envs,
 			},
 		},
-		GroupTags: []infra_sdk.CostGroupTag{{Key: infra_sdk.StandardTagBlock}},
+		GroupBy: infra_sdk.CostGroupIdentifiers{
+			{Dimension: infra_sdk.UniversalDimensionAccount},
+			{TagKey: infra_sdk.UniversalTagBlock},
+		},
 	}
 	result, err := coster.GetCosts(ctx, query)
 	if err != nil {
