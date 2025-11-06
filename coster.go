@@ -3,6 +3,7 @@ package infra_sdk
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 )
@@ -79,6 +80,29 @@ func (r *CostResult) AddDatapoint(metricName string, groupKeys CostSeriesGroupKe
 	r.Series[seriesKey] = cur
 }
 
+// MergeDatapoint acts like AddDatapoint except it will not add a duplicate datapoint
+// This is detected by comparing start+end times on the datapoint
+func (r *CostResult) MergeDatapoint(metricName string, groupKeys CostSeriesGroupKeys, datapoint CostSeriesDatapoint) {
+	seriesKey := fmt.Sprintf("%s:%s", groupKeys.UniqueIdentifier(), metricName)
+	cur, ok := r.Series[seriesKey]
+	if !ok {
+		cur = CostSeries{
+			MetricName: metricName,
+			GroupKeys:  groupKeys,
+			Points:     []CostSeriesDatapoint{},
+		}
+	}
+
+	isSameDatapoint := func(cur CostSeriesDatapoint) bool {
+		return cur.Start == datapoint.Start && cur.End == datapoint.End
+	}
+	if slices.ContainsFunc(cur.Points, isSameDatapoint) {
+		return
+	}
+	cur.Points = append(cur.Points, datapoint)
+	r.Series[seriesKey] = cur
+}
+
 func NewCostResult() *CostResult {
 	return &CostResult{
 		Series: map[string]CostSeries{},
@@ -109,8 +133,8 @@ func (s CostSeriesGroupKeys) UniqueIdentifier() string {
 // If the group key is a tag, TagKey and TagValue are populated.
 // Otherwise, Name is populated.
 type CostSeriesGroupKey struct {
-	Name   string `json:"name"`
-	TagKey string `json:"tagKey"`
+	Name   string `json:"name,omitempty"`
+	TagKey string `json:"tagKey,omitempty"`
 	Value  string `json:"value"`
 }
 
