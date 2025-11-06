@@ -27,7 +27,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sts v1.38.9
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/net v0.46.0
-	gopkg.in/nullstone-io/go-api-client.v0 v0.0.0-20251028222640-d27c71d5cd3c
+	gopkg.in/nullstone-io/go-api-client.v0 v0.0.0-20251105201948-2bdfae663a5b
 )
 
 require (
