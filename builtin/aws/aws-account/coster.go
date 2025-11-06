@@ -2,9 +2,7 @@ package aws_account
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"log"
 
 	ce "github.com/aws/aws-sdk-go-v2/service/costexplorer"
 	cetypes "github.com/aws/aws-sdk-go-v2/service/costexplorer/types"
@@ -53,8 +51,6 @@ func (c Coster) GetCosts(ctx context.Context, query infra_sdk.CostQuery) (*infra
 		Filter:      costQueryToFilter(query),
 		GroupBy:     costQueryToGroupBy(groupBy),
 	}
-	rawInput, _ := json.Marshal(input)
-	log.Println("input", string(rawInput))
 
 	aggregator := NewCostResultAggregator()
 	var nextToken *string
