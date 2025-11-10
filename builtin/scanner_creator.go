@@ -2,6 +2,7 @@ package builtin
 
 import (
 	"context"
+
 	infra_sdk "github.com/nullstone-io/infra-sdk"
 	"github.com/nullstone-io/infra-sdk/access/aws"
 	aws_account "github.com/nullstone-io/infra-sdk/builtin/aws/aws-account"
@@ -15,39 +16,20 @@ type ScannerCreator struct {
 }
 
 func (s ScannerCreator) NewScanner(ctx context.Context, getProviderFn GetProviderFunc, orgName string, providerConfig types.ProviderConfig) (infra_sdk.Scanner, error) {
-	scanner := MultiScanner{Scanners: make([]infra_sdk.Scanner, 0)}
-	if providerConfig.Aws != nil {
+	if providerConfig.Aws != nil && providerConfig.Aws.ProviderName != "" {
 		provider, err := getProviderFn(ctx, orgName, providerConfig.Aws.ProviderName)
 		if err != nil {
 			return nil, err
+		} else if provider != nil {
+			return aws_account.Scanner{
+				Assumer:        s.AwsAssumer,
+				Provider:       *provider,
+				ProviderConfig: providerConfig,
+			}, nil
 		}
-		scanner.Scanners = append(scanner.Scanners, aws_account.Scanner{
-			Assumer:        s.AwsAssumer,
-			Provider:       *provider,
-			ProviderConfig: providerConfig,
-		})
 	}
 	if providerConfig.Gcp != nil {
 		// TODO: Implement GCP
-	}
-	return scanner, nil
-}
-
-var (
-	_ infra_sdk.Scanner = MultiScanner{}
-)
-
-type MultiScanner struct {
-	Scanners []infra_sdk.Scanner
-}
-
-func (s MultiScanner) Scan(ctx context.Context) ([]infra_sdk.ScanResource, error) {
-	for _, scanner := range s.Scanners {
-		resources, err := scanner.Scan(ctx)
-		if err != nil {
-			return nil, err
-		}
-		return resources, nil
 	}
 	return nil, nil
 }

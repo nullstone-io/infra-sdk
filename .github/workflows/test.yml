@@ -1,0 +1,37 @@
+name: Test infra-sdk
+
+on:
+  push:
+    branches: [ $default-branch ]
+  pull_request: {}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: read
+      checks: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.25
+          cache: true
+      - name: Set up gotestsum
+        run: go install gotest.tools/gotestsum@latest
+      - name: Run tests
+        run: |
+          mkdir -p build/test-results
+          gotestsum \
+            --format=short-verbose \
+            --junitfile build/test-results/go-junit.xml \
+            ./...
+      - name: Publish test results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        with:
+          files: build/test-results/**/*.xml
+          check_name: Go Tests
