@@ -2,6 +2,7 @@ package infra_sdk
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"gopkg.in/nullstone-io/go-api-client.v0/types"
@@ -44,3 +45,6 @@ func (m MultiSecretManager) Update(ctx context.Context, identity types.SecretIde
 	}
 	return manager.Update(ctx, identity, value)
 }
+
+var ErrSecretAlreadyExists = errors.New("secret already exists")
+var ErrDoesNotExist = errors.New("secret does not exist")
