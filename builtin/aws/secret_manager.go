@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws/arn"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
@@ -130,7 +131,7 @@ func (s SecretManager) secretIdentityFromAws(secretArn *string, name *string, pr
 	if a, err := arn.Parse(unptr(secretArn)); err == nil {
 		identity.AwsRegion = a.Region
 		identity.AwsAccountId = a.AccountID
-		identity.Name = a.Resource
+		identity.Name = strings.TrimPrefix("secret:", a.Resource)
 	}
 	return identity
 }
