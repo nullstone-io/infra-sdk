@@ -2,7 +2,6 @@ package gcp
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,10 +14,9 @@ import (
 )
 
 var (
-	ErrMissingAuthTypeInGcpCredentials         = errors.New(`missing "auth_type" in gcp credentials`)
-	ErrUnsupportedAuthTypeInGcpCredentials     = errors.New(`unsupported "auth_type" in gcp credentials`)
-	ErrMissingEmailInServiceAccountOutput      = errors.New(`missing "email" in output for service account`)
-	ErrMissingPrivateKeyInServiceAccountOutput = errors.New(`missing "private_key" in output for service account`)
+	ErrMissingAuthTypeInGcpCredentials     = errors.New(`missing "auth_type" in gcp credentials`)
+	ErrUnsupportedAuthTypeInGcpCredentials = errors.New(`unsupported "auth_type" in gcp credentials`)
+	ErrMissingEmailInServiceAccountOutput  = errors.New(`missing "email" in output for service account`)
 )
 
 func ResolveTokenSource(ctx context.Context, assumer Assumer, provider types.Provider) (oauth2.TokenSource, error) {
@@ -40,15 +38,8 @@ func ResolveTokenSource(ctx context.Context, assumer Assumer, provider types.Pro
 }
 
 func ResolveKeyTokenSource(ctx context.Context, a types.GcpServiceAccountKey, scopes ...string) (oauth2.TokenSource, error) {
-	if a.PrivateKey == "" {
-		return nil, ErrMissingPrivateKeyInServiceAccountOutput
-	}
-
-	decoded, err := base64.StdEncoding.DecodeString(a.PrivateKey)
-	if err != nil {
-		return nil, fmt.Errorf("service account private key is not base64-encoded: %w", err)
-	}
-	cfg, err := google.JWTConfigFromJSON(decoded, scopes...)
+	keyFile, _ := json.Marshal(a)
+	cfg, err := google.JWTConfigFromJSON(keyFile, scopes...)
 	if err != nil {
 		return nil, fmt.Errorf("unable to read service account credentials json file: %w", err)
 	}
