@@ -53,14 +53,17 @@ func (s SecretManager) List(ctx context.Context, location types.SecretLocation) 
 		if err != nil {
 			return nil, fmt.Errorf("error listing secrets: %w", err)
 		}
-		result = append(result, types.Secret{
+		cur := types.Secret{
 			Identity: s.secretIdentityFromGcp(secret.Name),
 			Metadata: map[string]any{
 				"labels": secret.Labels,
 			},
 			Value:    "",
 			Redacted: true,
-		})
+		}
+		// The returned secret name contains project number instead of the project id, let's coerce back to project id
+		cur.Identity.GcpProjectId = location.GcpProjectId
+		result = append(result, cur)
 	}
 	return result, nil
 }
