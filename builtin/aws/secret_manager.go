@@ -131,7 +131,7 @@ func (s SecretManager) secretIdentityFromAws(secretArn *string, name *string, pr
 	if a, err := arn.Parse(unptr(secretArn)); err == nil {
 		identity.AwsRegion = a.Region
 		identity.AwsAccountId = a.AccountID
-		identity.Name = strings.TrimPrefix("secret:", a.Resource)
+		identity.Name = strings.TrimPrefix(a.Resource, "secret:")
 	}
 	return identity
 }
