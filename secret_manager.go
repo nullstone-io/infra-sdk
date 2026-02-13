@@ -40,19 +40,42 @@ func (m MultiSecretManager) List(ctx context.Context, location types.SecretLocat
 }
 
 func (m MultiSecretManager) Create(ctx context.Context, identity types.SecretIdentity, value string) (*types.Secret, error) {
-	manager, ok := m.Managers[identity.Platform]
-	if !ok {
-		return nil, fmt.Errorf("secret manager does not support %q platform", identity.Platform)
+	manager, err := m.findManager(identity)
+	if err != nil {
+		return nil, err
 	}
 	return manager.Create(ctx, identity, value)
 }
 
 func (m MultiSecretManager) Update(ctx context.Context, identity types.SecretIdentity, value string) (*types.Secret, error) {
+	manager, err := m.findManager(identity)
+	if err != nil {
+		return nil, err
+	}
+	return manager.Update(ctx, identity, value)
+}
+
+func (m MultiSecretManager) findManager(identity types.SecretIdentity) (SecretManager, error) {
+	if len(m.Managers) == 0 {
+		return nil, fmt.Errorf("no cloud platforms are configured")
+	}
+
+	if identity.Platform == "" {
+		if len(m.Managers) > 1 {
+			return nil, fmt.Errorf("multiple cloud platforms are configured, you must specify a cloud platform")
+		}
+		if len(m.Managers) == 1 {
+			for _, cur := range m.Managers {
+				return cur, nil
+			}
+		}
+	}
+
 	manager, ok := m.Managers[identity.Platform]
 	if !ok {
 		return nil, fmt.Errorf("secret manager does not support %q platform", identity.Platform)
 	}
-	return manager.Update(ctx, identity, value)
+	return manager, nil
 }
 
 var ErrSecretAlreadyExists = errors.New("secret already exists")
