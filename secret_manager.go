@@ -23,11 +23,20 @@ type MultiSecretManager struct {
 }
 
 func (m MultiSecretManager) List(ctx context.Context, location types.SecretLocation) ([]types.Secret, error) {
-	manager, ok := m.Managers[location.Platform]
-	if !ok {
-		return nil, fmt.Errorf("secret manager does not support %q platform", location.Platform)
+	result := make([]types.Secret, 0)
+	var errs []error
+	for _, manager := range m.Managers {
+		cur, err := manager.List(ctx, location)
+		if err != nil {
+			errs = append(errs, err)
+		} else {
+			result = append(result, cur...)
+		}
 	}
-	return manager.List(ctx, location)
+	if len(errs) > 0 {
+		return result, errors.Join(errs...)
+	}
+	return result, nil
 }
 
 func (m MultiSecretManager) Create(ctx context.Context, identity types.SecretIdentity, value string) (*types.Secret, error) {
