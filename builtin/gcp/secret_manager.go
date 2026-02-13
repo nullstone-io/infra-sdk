@@ -37,6 +37,10 @@ func (s SecretManager) List(ctx context.Context, location types.SecretLocation) 
 	}
 	defer client.Close()
 
+	if location.GcpProjectId == "" {
+		location.GcpProjectId = s.Provider.ProviderId
+	}
+
 	parent := fmt.Sprintf("projects/%s", location.GcpProjectId)
 	it := client.ListSecrets(ctx, &secretmanagerpb.ListSecretsRequest{Parent: parent})
 
@@ -70,6 +74,10 @@ func (s SecretManager) Create(ctx context.Context, identity types.SecretIdentity
 		return nil, err
 	}
 	defer client.Close()
+
+	if identity.GcpProjectId == "" {
+		identity.GcpProjectId = s.Provider.ProviderId
+	}
 
 	secret, err := client.CreateSecret(ctx, &secretmanagerpb.CreateSecretRequest{
 		Parent:   fmt.Sprintf("projects/%s", identity.GcpProjectId),
@@ -116,6 +124,10 @@ func (s SecretManager) Update(ctx context.Context, identity types.SecretIdentity
 		return nil, err
 	}
 	defer client.Close()
+
+	if identity.GcpProjectId == "" {
+		identity.GcpProjectId = s.Provider.ProviderId
+	}
 
 	_, err = client.AddSecretVersion(ctx, &secretmanagerpb.AddSecretVersionRequest{
 		Parent: fmt.Sprintf("projects/%s", identity.GcpProjectId),
