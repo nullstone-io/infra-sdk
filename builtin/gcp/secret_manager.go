@@ -133,7 +133,7 @@ func (s SecretManager) Update(ctx context.Context, identity types.SecretIdentity
 	}
 
 	_, err = client.AddSecretVersion(ctx, &secretmanagerpb.AddSecretVersionRequest{
-		Parent: fmt.Sprintf("projects/%s", identity.GcpProjectId),
+		Parent: fmt.Sprintf("projects/%s/secrets/%s", identity.GcpProjectId, identity.Name),
 		Payload: &secretmanagerpb.SecretPayload{
 			Data: []byte(value),
 		},
