@@ -3,12 +3,17 @@ package aws
 import (
 	"encoding/json"
 	"fmt"
+	"time"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"gopkg.in/nullstone-io/go-api-client.v0/types"
-	"time"
+)
+
+const (
+	DefaultAwsRegion = "us-east-1"
 )
 
 var (
@@ -16,10 +21,12 @@ var (
 	assumeRoleDuration    = time.Hour
 )
 
-func ResolveConfig(assumerAwsConfig aws.Config, provider types.Provider, cfg types.ProviderConfig) (aws.Config, error) {
-	region := "us-east-1"
-	if cfg.Aws != nil && cfg.Aws.Region != "" {
-		region = cfg.Aws.Region
+func ResolveConfig(assumerAwsConfig aws.Config, provider types.Provider, cfg *types.AwsProviderConfig, region string) (aws.Config, error) {
+	if region == "" {
+		region = DefaultAwsRegion
+	}
+	if cfg != nil && cfg.Region != "" {
+		region = cfg.Region
 	}
 
 	awsConfig := aws.Config{Region: region}

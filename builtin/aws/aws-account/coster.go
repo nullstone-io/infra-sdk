@@ -26,8 +26,7 @@ type Coster struct {
 
 func (c Coster) GetCosts(ctx context.Context, query infra_sdk.CostQuery) (*infra_sdk.CostResult, error) {
 	// Cost Explorer is global, use us-east-1 as the region to satisfy the aws sdk
-	providerConfig := types.ProviderConfig{Aws: &types.AwsProviderConfig{Region: "us-east-1"}}
-	awsConfig, err := aws.ResolveConfig(c.Assumer.AwsConfig(), c.Provider, providerConfig)
+	awsConfig, err := aws.ResolveConfig(c.Assumer.AwsConfig(), c.Provider, &types.AwsProviderConfig{Region: "us-east-1"}, "")
 	if err != nil {
 		return nil, fmt.Errorf("error resolving aws config: %w", err)
 	}

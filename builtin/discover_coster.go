@@ -2,13 +2,15 @@ package builtin
 
 import (
 	infra_sdk "github.com/nullstone-io/infra-sdk"
-	"github.com/nullstone-io/infra-sdk/access/aws"
+	aws_access "github.com/nullstone-io/infra-sdk/access/aws"
+	gcp_access "github.com/nullstone-io/infra-sdk/access/gcp"
 	aws_account "github.com/nullstone-io/infra-sdk/builtin/aws/aws-account"
 	"gopkg.in/nullstone-io/go-api-client.v0/types"
 )
 
 type CosterCreator struct {
-	AwsAssumer aws.Assumer
+	AwsAssumer aws_access.Assumer
+	GcpAssumer gcp_access.Assumer
 }
 
 func (s CosterCreator) NewMultiCoster(providers []types.Provider) (infra_sdk.MultiCoster, error) {

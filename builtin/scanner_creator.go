@@ -24,7 +24,7 @@ func (s ScannerCreator) NewScanner(ctx context.Context, getProviderFn GetProvide
 			return aws_account.Scanner{
 				Assumer:        s.AwsAssumer,
 				Provider:       *provider,
-				ProviderConfig: providerConfig,
+				ProviderConfig: providerConfig.Aws,
 			}, nil
 		}
 	}
