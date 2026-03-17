@@ -32,7 +32,7 @@ require (
 	golang.org/x/oauth2 v0.35.0
 	google.golang.org/api v0.266.0
 	google.golang.org/grpc v1.79.0
-	gopkg.in/nullstone-io/go-api-client.v0 v0.0.0-20260213040708-c776dab7c2ce
+	gopkg.in/nullstone-io/go-api-client.v0 v0.0.0-20260317161414-aa9d9e156fe6
 )
 
 require (
