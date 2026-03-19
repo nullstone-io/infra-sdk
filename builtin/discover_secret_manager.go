@@ -26,9 +26,9 @@ func (c SecretManagerCreator) NewSecretManager(providers []types.Provider, provi
 func (c SecretManagerCreator) DiscoverSecretManager(provider types.Provider, providerConfig types.ProviderConfig) (infra_sdk.SecretManager, error) {
 	switch provider.ProviderType {
 	case "aws":
-		return aws.SecretManager{Accessor: c.Accessors.Aws}, nil
+		return aws.SecretManager{Accessor: c.Accessors.Aws(provider, providerConfig)}, nil
 	case "gcp":
-		return gcp.SecretManager{Accessor: c.Accessors.Gcp}, nil
+		return gcp.SecretManager{Accessor: c.Accessors.Gcp(provider, providerConfig)}, nil
 	case "azure":
 		// TODO: Implement Azure
 	}

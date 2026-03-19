@@ -20,7 +20,7 @@ func (s ScannerCreator) NewScanner(ctx context.Context, getProviderFn GetProvide
 		if err != nil {
 			return nil, err
 		} else if provider != nil {
-			return aws_account.Scanner{Accessor: s.Accessors.Aws}, nil
+			return aws_account.Scanner{Accessor: s.Accessors.Aws(*provider, providerConfig)}, nil
 		}
 	}
 	if providerConfig.Gcp != nil {

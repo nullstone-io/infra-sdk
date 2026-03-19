@@ -25,7 +25,13 @@ func (s CosterCreator) NewMultiCoster(providers []types.Provider) (infra_sdk.Mul
 func (s CosterCreator) DiscoverCoster(provider types.Provider) (infra_sdk.Coster, error) {
 	switch provider.ProviderType {
 	case "aws":
-		return aws_account.Coster{Accessor: s.Accessors.Aws}, nil
+		providerConfig := types.ProviderConfig{
+			Aws: &types.AwsProviderConfig{
+				ProviderName: provider.Name,
+				Region:       "",
+			},
+		}
+		return aws_account.Coster{Accessor: s.Accessors.Aws(provider, providerConfig)}, nil
 	case "gcp":
 		// TODO: Implement GCP
 		//return gcp_account.Coster{Accessor: s.Accessors.Gcp}, nil
