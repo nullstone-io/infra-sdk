@@ -8,9 +8,9 @@ import (
 	"gopkg.in/nullstone-io/go-api-client.v0/types"
 )
 
-type Accessors struct {
-	Aws func(provider types.Provider, providerConfig types.ProviderConfig) AwsAccessor
-	Gcp func(provider types.Provider, providerConfig types.ProviderConfig) GcpAccessor
+type Accessors interface {
+	Aws(provider types.Provider, providerConfig types.ProviderConfig) AwsAccessor
+	Gcp(provider types.Provider, providerConfig types.ProviderConfig) GcpAccessor
 }
 
 type AwsAccessor interface {
