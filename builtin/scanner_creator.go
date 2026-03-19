@@ -14,17 +14,16 @@ type ScannerCreator struct {
 	Accessors infra_sdk.Accessors
 }
 
-func (s ScannerCreator) NewScanner(ctx context.Context, getProviderFn GetProviderFunc, orgName string, providerConfig types.ProviderConfig) (infra_sdk.Scanner, error) {
-	if providerConfig.Aws != nil && providerConfig.Aws.ProviderName != "" {
-		provider, err := getProviderFn(ctx, orgName, providerConfig.Aws.ProviderName)
-		if err != nil {
-			return nil, err
-		} else if provider != nil {
-			return aws_account.Scanner{Accessor: s.Accessors.Aws(*provider, providerConfig)}, nil
-		}
-	}
-	if providerConfig.Gcp != nil {
+func (s ScannerCreator) NewScanner(provider types.Provider, providerConfig types.ProviderConfig) (infra_sdk.Scanner, error) {
+	switch provider.ProviderType {
+	case "aws":
+		return aws_account.Scanner{Accessor: s.Accessors.Aws(provider, providerConfig)}, nil
+	case "gcp":
 		// TODO: Implement GCP
+		//return gcp_account.Scanner{Accessor: s.Accessors.Gcp(provider, providerConfig)}, nil
+	case "azure":
+		// TODO: Implement Azure
+		//return azure_account.Scanner{Accessor: s.Accessors.Gcp(provider, providerConfig)}, nil
 	}
 	return nil, nil
 }
