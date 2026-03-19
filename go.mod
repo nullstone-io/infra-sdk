@@ -1,6 +1,6 @@
 module github.com/nullstone-io/infra-sdk
 
-go 1.24.0
+go 1.25.0
 
 require (
 	cloud.google.com/go/secretmanager v1.16.0
@@ -26,13 +26,12 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.41.1
 	github.com/aws/aws-sdk-go-v2/service/sns v1.39.11
 	github.com/aws/aws-sdk-go-v2/service/sqs v1.42.21
-	github.com/aws/aws-sdk-go-v2/service/sts v1.41.6
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/net v0.50.0
 	golang.org/x/oauth2 v0.35.0
 	google.golang.org/api v0.266.0
 	google.golang.org/grpc v1.79.0
-	gopkg.in/nullstone-io/go-api-client.v0 v0.0.0-20260317161414-aa9d9e156fe6
+	gopkg.in/nullstone-io/go-api-client.v0 v0.0.0-20260318183513-bc9e615fb2a5
 )
 
 require (
@@ -71,12 +70,12 @@ require (
 	github.com/zclconf/go-cty v1.17.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.61.0 // indirect
-	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.65.0 // indirect
-	go.opentelemetry.io/otel v1.40.0 // indirect
-	go.opentelemetry.io/otel/metric v1.40.0 // indirect
-	go.opentelemetry.io/otel/trace v1.40.0 // indirect
+	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.67.0 // indirect
+	go.opentelemetry.io/otel v1.42.0 // indirect
+	go.opentelemetry.io/otel/metric v1.42.0 // indirect
+	go.opentelemetry.io/otel/trace v1.42.0 // indirect
 	golang.org/x/crypto v0.48.0 // indirect
-	golang.org/x/mod v0.33.0 // indirect
+	golang.org/x/mod v0.34.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.41.0 // indirect
 	golang.org/x/text v0.34.0 // indirect
