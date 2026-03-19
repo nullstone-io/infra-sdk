@@ -10,7 +10,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	sm_types "github.com/aws/aws-sdk-go-v2/service/secretsmanager/types"
 	infra_sdk "github.com/nullstone-io/infra-sdk"
-	"github.com/nullstone-io/infra-sdk/access/aws"
 	"gopkg.in/nullstone-io/go-api-client.v0/types"
 )
 
@@ -19,18 +18,16 @@ var (
 )
 
 type SecretManager struct {
-	Assumer        aws.Assumer
-	Provider       types.Provider
-	ProviderConfig *types.AwsProviderConfig
+	Accessor infra_sdk.AwsAccessor
 }
 
 func (s SecretManager) List(ctx context.Context, location types.SecretLocation) ([]types.Secret, error) {
-	if s.ProviderConfig == nil || s.ProviderConfig.ProviderName == "" {
-		return nil, nil
-	}
 	client, err := s.smClient(location.AwsRegion)
 	if err != nil {
 		return nil, err
+	}
+	if client == nil {
+		return nil, nil
 	}
 
 	input := &secretsmanager.ListSecretsInput{}
@@ -54,12 +51,12 @@ func (s SecretManager) List(ctx context.Context, location types.SecretLocation) 
 }
 
 func (s SecretManager) Create(ctx context.Context, identity types.SecretIdentity, value string) (*types.Secret, error) {
-	if s.ProviderConfig == nil || s.ProviderConfig.ProviderName == "" {
-		return nil, nil
-	}
 	client, err := s.smClient(identity.AwsRegion)
 	if err != nil {
 		return nil, err
+	}
+	if client == nil {
+		return nil, nil
 	}
 
 	out, err := client.CreateSecret(ctx, &secretsmanager.CreateSecretInput{
@@ -83,12 +80,11 @@ func (s SecretManager) Create(ctx context.Context, identity types.SecretIdentity
 }
 
 func (s SecretManager) Update(ctx context.Context, identity types.SecretIdentity, value string) (*types.Secret, error) {
-	if s.ProviderConfig == nil || s.ProviderConfig.ProviderName == "" {
-		return nil, nil
-	}
 	client, err := s.smClient(identity.AwsRegion)
 	if err != nil {
 		return nil, err
+	} else if client == nil {
+		return nil, nil
 	}
 
 	out, err := client.UpdateSecret(ctx, &secretsmanager.UpdateSecretInput{
@@ -112,20 +108,30 @@ func (s SecretManager) Update(ctx context.Context, identity types.SecretIdentity
 }
 
 func (s SecretManager) smClient(region string) (*secretsmanager.Client, error) {
-	awsConfig, err := aws.ResolveConfig(s.Assumer.AwsConfig(), s.Provider, s.ProviderConfig, region)
+	if s.Accessor == nil {
+		return nil, nil
+	}
+	awsConfig, err := s.Accessor.NewConfig(region)
 	if err != nil {
 		return nil, fmt.Errorf("error resolving aws config: %w", err)
 	}
-	return secretsmanager.NewFromConfig(awsConfig), nil
+	if awsConfig == nil {
+		return nil, nil
+	}
+	return secretsmanager.NewFromConfig(*awsConfig), nil
 }
 
 func (s SecretManager) secretIdentityFromAws(secretArn *string, name *string, primaryRegion *string) types.SecretIdentity {
+	awsAccountId := ""
+	if s.Accessor != nil {
+		awsAccountId = s.Accessor.AwsAccountId()
+	}
 	identity := types.SecretIdentity{
 		Name: unptr(name),
 		SecretLocation: types.SecretLocation{
 			Platform:     types.SecretLocationPlatformAws,
 			AwsRegion:    unptr(primaryRegion),
-			AwsAccountId: s.Provider.ProviderId,
+			AwsAccountId: awsAccountId,
 		},
 	}
 	if a, err := arn.Parse(unptr(secretArn)); err == nil {

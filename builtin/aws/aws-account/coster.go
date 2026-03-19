@@ -7,8 +7,6 @@ import (
 	ce "github.com/aws/aws-sdk-go-v2/service/costexplorer"
 	cetypes "github.com/aws/aws-sdk-go-v2/service/costexplorer/types"
 	infra_sdk "github.com/nullstone-io/infra-sdk"
-	"github.com/nullstone-io/infra-sdk/access/aws"
-	"gopkg.in/nullstone-io/go-api-client.v0/types"
 )
 
 var (
@@ -20,17 +18,19 @@ var (
 )
 
 type Coster struct {
-	Assumer  aws.Assumer
-	Provider types.Provider
+	Accessor infra_sdk.AwsAccessor
 }
 
 func (c Coster) GetCosts(ctx context.Context, query infra_sdk.CostQuery) (*infra_sdk.CostResult, error) {
 	// Cost Explorer is global, use us-east-1 as the region to satisfy the aws sdk
-	awsConfig, err := aws.ResolveConfig(c.Assumer.AwsConfig(), c.Provider, &types.AwsProviderConfig{Region: "us-east-1"}, "")
+	awsConfig, err := c.Accessor.NewConfig("us-east-1")
 	if err != nil {
 		return nil, fmt.Errorf("error resolving aws config: %w", err)
 	}
-	client := ce.NewFromConfig(awsConfig)
+	if awsConfig == nil {
+		return nil, nil
+	}
+	client := ce.NewFromConfig(*awsConfig)
 
 	period := &cetypes.DateInterval{
 		Start: ptr(query.Start.Format("2006-01-02")),

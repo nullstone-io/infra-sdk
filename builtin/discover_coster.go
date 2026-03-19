@@ -2,15 +2,12 @@ package builtin
 
 import (
 	infra_sdk "github.com/nullstone-io/infra-sdk"
-	aws_access "github.com/nullstone-io/infra-sdk/access/aws"
-	gcp_access "github.com/nullstone-io/infra-sdk/access/gcp"
 	aws_account "github.com/nullstone-io/infra-sdk/builtin/aws/aws-account"
 	"gopkg.in/nullstone-io/go-api-client.v0/types"
 )
 
 type CosterCreator struct {
-	AwsAssumer aws_access.Assumer
-	GcpAssumer gcp_access.Assumer
+	Accessors infra_sdk.Accessors
 }
 
 func (s CosterCreator) NewMultiCoster(providers []types.Provider) (infra_sdk.MultiCoster, error) {
@@ -28,12 +25,12 @@ func (s CosterCreator) NewMultiCoster(providers []types.Provider) (infra_sdk.Mul
 func (s CosterCreator) DiscoverCoster(provider types.Provider) (infra_sdk.Coster, error) {
 	switch provider.ProviderType {
 	case "aws":
-		return aws_account.Coster{
-			Assumer:  s.AwsAssumer,
-			Provider: provider,
-		}, nil
+		return aws_account.Coster{Accessor: s.Accessors.Aws}, nil
 	case "gcp":
 		// TODO: Implement GCP
+		//return gcp_account.Coster{Accessor: s.Accessors.Gcp}, nil
+	case "azure":
+		// TODO: Implement Azure
 	}
 	return nil, nil
 }

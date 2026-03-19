@@ -4,7 +4,6 @@ import (
 	"context"
 
 	infra_sdk "github.com/nullstone-io/infra-sdk"
-	"github.com/nullstone-io/infra-sdk/access/aws"
 	aws_account "github.com/nullstone-io/infra-sdk/builtin/aws/aws-account"
 	"gopkg.in/nullstone-io/go-api-client.v0/types"
 )
@@ -12,7 +11,7 @@ import (
 type GetProviderFunc func(ctx context.Context, orgName string, providerName string) (*types.Provider, error)
 
 type ScannerCreator struct {
-	AwsAssumer aws.Assumer
+	Accessors infra_sdk.Accessors
 }
 
 func (s ScannerCreator) NewScanner(ctx context.Context, getProviderFn GetProviderFunc, orgName string, providerConfig types.ProviderConfig) (infra_sdk.Scanner, error) {
@@ -21,11 +20,7 @@ func (s ScannerCreator) NewScanner(ctx context.Context, getProviderFn GetProvide
 		if err != nil {
 			return nil, err
 		} else if provider != nil {
-			return aws_account.Scanner{
-				Assumer:        s.AwsAssumer,
-				Provider:       *provider,
-				ProviderConfig: providerConfig.Aws,
-			}, nil
+			return aws_account.Scanner{Accessor: s.Accessors.Aws}, nil
 		}
 	}
 	if providerConfig.Gcp != nil {
