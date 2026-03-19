@@ -5,13 +5,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"golang.org/x/oauth2"
-	"gopkg.in/nullstone-io/go-api-client.v0/types"
 )
-
-type Accessors interface {
-	Aws(provider types.Provider, providerConfig types.ProviderConfig) AwsAccessor
-	Gcp(provider types.Provider, providerConfig types.ProviderConfig) GcpAccessor
-}
 
 type AwsAccessor interface {
 	NewConfig(region string) (*aws.Config, error)
