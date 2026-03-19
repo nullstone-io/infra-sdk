@@ -6,8 +6,6 @@ import (
 	"fmt"
 
 	"github.com/nullstone-io/infra-sdk"
-	"github.com/nullstone-io/infra-sdk/access/aws"
-	"gopkg.in/nullstone-io/go-api-client.v0/types"
 )
 
 var (
@@ -40,20 +38,24 @@ var (
 )
 
 type Scanner struct {
-	Assumer        aws.Assumer
-	Provider       types.Provider
-	ProviderConfig *types.AwsProviderConfig
+	Accessor infra_sdk.AwsAccessor
 }
 
 func (s Scanner) Scan(ctx context.Context) ([]infra_sdk.ScanResource, error) {
-	awsConfig, err := aws.ResolveConfig(s.Assumer.AwsConfig(), s.Provider, s.ProviderConfig, "")
+	if s.Accessor == nil {
+		return nil, nil
+	}
+	awsConfig, err := s.Accessor.NewConfig("")
 	if err != nil {
 		return nil, fmt.Errorf("error resolving aws config: %w", err)
+	}
+	if awsConfig == nil {
+		return nil, nil
 	}
 
 	tracker := NewResourceScanTracker()
 	for _, scanner := range AllScanners {
-		tracker.Scan(ctx, awsConfig, scanner)
+		tracker.Scan(ctx, *awsConfig, scanner)
 	}
 	tracker.Wait()
 	if len(tracker.Errors) > 0 {

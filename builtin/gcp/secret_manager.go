@@ -9,7 +9,6 @@ import (
 	secretmanager "cloud.google.com/go/secretmanager/apiv1"
 	"cloud.google.com/go/secretmanager/apiv1/secretmanagerpb"
 	infra_sdk "github.com/nullstone-io/infra-sdk"
-	"github.com/nullstone-io/infra-sdk/access/gcp"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc/codes"
@@ -22,23 +21,21 @@ var (
 )
 
 type SecretManager struct {
-	Assumer        gcp.Assumer
-	Provider       types.Provider
-	ProviderConfig *types.GcpProviderConfig
+	Accessor infra_sdk.GcpAccessor
 }
 
 func (s SecretManager) List(ctx context.Context, location types.SecretLocation) ([]types.Secret, error) {
-	if s.ProviderConfig == nil || s.ProviderConfig.ProviderName == "" {
-		return nil, nil
-	}
 	client, err := s.smClient(ctx)
 	if err != nil {
 		return nil, err
 	}
+	if client == nil {
+		return nil, nil
+	}
 	defer client.Close()
 
-	if location.GcpProjectId == "" {
-		location.GcpProjectId = s.Provider.ProviderId
+	if location.GcpProjectId == "" && s.Accessor != nil {
+		location.GcpProjectId = s.Accessor.GcpProjectId()
 	}
 
 	parent := fmt.Sprintf("projects/%s", location.GcpProjectId)
@@ -69,17 +66,17 @@ func (s SecretManager) List(ctx context.Context, location types.SecretLocation) 
 }
 
 func (s SecretManager) Create(ctx context.Context, identity types.SecretIdentity, value string) (*types.Secret, error) {
-	if s.ProviderConfig == nil || s.ProviderConfig.ProviderName == "" {
-		return nil, nil
-	}
 	client, err := s.smClient(ctx)
 	if err != nil {
 		return nil, err
 	}
+	if client == nil {
+		return nil, nil
+	}
 	defer client.Close()
 
-	if identity.GcpProjectId == "" {
-		identity.GcpProjectId = s.Provider.ProviderId
+	if identity.GcpProjectId == "" && s.Accessor != nil {
+		identity.GcpProjectId = s.Accessor.GcpProjectId()
 	}
 
 	secret, err := client.CreateSecret(ctx, &secretmanagerpb.CreateSecretRequest{
@@ -119,17 +116,17 @@ func (s SecretManager) Create(ctx context.Context, identity types.SecretIdentity
 }
 
 func (s SecretManager) Update(ctx context.Context, identity types.SecretIdentity, value string) (*types.Secret, error) {
-	if s.ProviderConfig == nil || s.ProviderConfig.ProviderName == "" {
-		return nil, nil
-	}
 	client, err := s.smClient(ctx)
 	if err != nil {
 		return nil, err
 	}
+	if client == nil {
+		return nil, nil
+	}
 	defer client.Close()
 
-	if identity.GcpProjectId == "" {
-		identity.GcpProjectId = s.Provider.ProviderId
+	if identity.GcpProjectId == "" && s.Accessor != nil {
+		identity.GcpProjectId = s.Accessor.GcpProjectId()
 	}
 
 	_, err = client.AddSecretVersion(ctx, &secretmanagerpb.AddSecretVersionRequest{
@@ -154,7 +151,8 @@ func (s SecretManager) Update(ctx context.Context, identity types.SecretIdentity
 }
 
 func (s SecretManager) smClient(ctx context.Context) (*secretmanager.Client, error) {
-	tokenSource, err := gcp.ResolveTokenSource(ctx, s.Assumer, s.Provider)
+	tokenSource, err := s.Accessor.GetTokenSource(ctx)
+	//tokenSource, err := gcp.ResolveTokenSource(ctx, s.Assumer, s.Provider)
 	if err != nil {
 		return nil, fmt.Errorf("error resolving gcp credentials: %w", err)
 	}
@@ -167,12 +165,17 @@ func (s SecretManager) smClient(ctx context.Context) (*secretmanager.Client, err
 }
 
 func (s SecretManager) secretIdentityFromGcp(secretName string) types.SecretIdentity {
+	gcpProjectId := ""
+	if s.Accessor != nil {
+		gcpProjectId = s.Accessor.GcpProjectId()
+	}
 	identity := types.SecretIdentity{
 		SecretLocation: types.SecretLocation{
 			Platform:     types.SecretLocationPlatformGcp,
-			GcpProjectId: s.Provider.ProviderId,
+			GcpProjectId: gcpProjectId,
 		},
 	}
+
 	// secretName is one of:
 	// - "projects/{project}/secrets/{secretId}"
 	// - "projects/{project}/locations/{location}/secrets/{secretId}"
