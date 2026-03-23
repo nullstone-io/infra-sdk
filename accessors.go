@@ -16,3 +16,9 @@ type GcpAccessor interface {
 	GetTokenSource(ctx context.Context) (oauth2.TokenSource, error)
 	GcpProjectId() string
 }
+
+type GcpBillingAccessor interface {
+	GcpAccessor
+	BillingDataset() string
+	BillingTable() string
+}
