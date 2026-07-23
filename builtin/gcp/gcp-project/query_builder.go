@@ -20,6 +20,18 @@ var granularityToEndInterval = map[infra_sdk.CostGranularity]string{
 	infra_sdk.CostGranularityMonthly: "INTERVAL 1 MONTH",
 }
 
+// periodEndExpr builds the expression closing each bucket.
+// BigQuery's TIMESTAMP_ADD only accepts date parts up to DAY -- adding INTERVAL 1 MONTH to a
+// TIMESTAMP is a query error -- so a monthly bucket adds the month in the DATE domain and
+// converts back.
+func periodEndExpr(granularity infra_sdk.CostGranularity, truncInterval string) string {
+	bucketStart := fmt.Sprintf("TIMESTAMP_TRUNC(usage_start_time, %s)", truncInterval)
+	if granularity == infra_sdk.CostGranularityMonthly {
+		return fmt.Sprintf("TIMESTAMP(DATE_ADD(DATE(%s), INTERVAL 1 MONTH))", bucketStart)
+	}
+	return fmt.Sprintf("TIMESTAMP_ADD(%s, %s)", bucketStart, granularityToEndInterval[granularity])
+}
+
 type QueryBuilder struct {
 	Table string
 }
@@ -35,7 +47,6 @@ func (b *QueryBuilder) Build(query infra_sdk.CostQuery) builtQuery {
 		granularity = infra_sdk.CostGranularityDaily
 	}
 	truncInterval := granularityToInterval[granularity]
-	endInterval := granularityToEndInterval[granularity]
 
 	groupBy := query.GroupBy.Unique()
 
@@ -46,7 +57,7 @@ func (b *QueryBuilder) Build(query infra_sdk.CostQuery) builtQuery {
 	// Always select the time window
 	selectCols = append(selectCols,
 		fmt.Sprintf("TIMESTAMP_TRUNC(usage_start_time, %s) AS period_start", truncInterval),
-		fmt.Sprintf("TIMESTAMP_ADD(TIMESTAMP_TRUNC(usage_start_time, %s), %s) AS period_end", truncInterval, endInterval),
+		fmt.Sprintf("%s AS period_end", periodEndExpr(granularity, truncInterval)),
 	)
 	groupByCols = append(groupByCols, "period_start", "period_end")
 

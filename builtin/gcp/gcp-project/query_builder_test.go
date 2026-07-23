@@ -40,7 +40,32 @@ func TestQueryBuilder_Build_MonthlyGranularity(t *testing.T) {
 	})
 
 	assert.Contains(t, result.SQL, "TIMESTAMP_TRUNC(usage_start_time, MONTH)")
-	assert.Contains(t, result.SQL, "INTERVAL 1 MONTH")
+	// BigQuery rejects TIMESTAMP_ADD with a MONTH date part, so the month has to be added in the
+	// DATE domain. Assert the whole expression -- substring checks let the invalid form through.
+	assert.Contains(t, result.SQL,
+		"TIMESTAMP(DATE_ADD(DATE(TIMESTAMP_TRUNC(usage_start_time, MONTH)), INTERVAL 1 MONTH)) AS period_end")
+	assert.NotContains(t, result.SQL, "TIMESTAMP_ADD(TIMESTAMP_TRUNC(usage_start_time, MONTH), INTERVAL 1 MONTH)")
+}
+
+func TestQueryBuilder_Build_SubDayGranularitiesUseTimestampAdd(t *testing.T) {
+	// TIMESTAMP_ADD is valid for date parts up to DAY, so those keep the simpler form.
+	for _, tt := range []struct {
+		granularity infra_sdk.CostGranularity
+		expected    string
+	}{
+		{infra_sdk.CostGranularityHourly, "TIMESTAMP_ADD(TIMESTAMP_TRUNC(usage_start_time, HOUR), INTERVAL 1 HOUR) AS period_end"},
+		{infra_sdk.CostGranularityDaily, "TIMESTAMP_ADD(TIMESTAMP_TRUNC(usage_start_time, DAY), INTERVAL 1 DAY) AS period_end"},
+	} {
+		t.Run(string(tt.granularity), func(t *testing.T) {
+			builder := &QueryBuilder{Table: "ds.table"}
+			result := builder.Build(infra_sdk.CostQuery{
+				Start:       time.Now(),
+				End:         time.Now(),
+				Granularity: tt.granularity,
+			})
+			assert.Contains(t, result.SQL, tt.expected)
+		})
+	}
 }
 
 func TestQueryBuilder_Build_HourlyGranularity(t *testing.T) {
