@@ -36,6 +36,8 @@ func (d UniversalDimension) ToGcpColumn() string {
 	switch d {
 	case infra_sdk.UniversalDimensionAccount:
 		return "project.id"
+	case infra_sdk.UniversalDimensionService:
+		return "service.description"
 	}
 	return string(d)
 }
@@ -46,6 +48,8 @@ func (d GcpDimension) ToUniversal() string {
 	switch d {
 	case "project.id":
 		return infra_sdk.UniversalDimensionAccount
+	case "service.description":
+		return infra_sdk.UniversalDimensionService
 	}
 	return string(d)
 }

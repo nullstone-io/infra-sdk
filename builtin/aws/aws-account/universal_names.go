@@ -8,6 +8,8 @@ func (d AwsDimension) ToUniversal() string {
 	switch d {
 	case "LINKED_ACCOUNT":
 		return infra_sdk.UniversalDimensionAccount
+	case "SERVICE":
+		return infra_sdk.UniversalDimensionService
 	}
 	return string(d)
 }
@@ -18,6 +20,8 @@ func (d UniversalDimension) ToAws() string {
 	switch d {
 	case infra_sdk.UniversalDimensionAccount:
 		return "LINKED_ACCOUNT"
+	case infra_sdk.UniversalDimensionService:
+		return "SERVICE"
 	}
 	return string(d)
 }
