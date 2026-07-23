@@ -21,6 +21,44 @@ func (m *mockCoster) GetCosts(ctx context.Context, query CostQuery) (*CostResult
 	return m.result, nil
 }
 
+type mockProviderCoster struct {
+	mockCoster
+	providerType string
+}
+
+func (m *mockProviderCoster) ProviderType() string { return m.providerType }
+
+func TestMultiCoster_StampsProvider(t *testing.T) {
+	now := time.Now().UTC()
+	dayAgo := now.Add(-24 * time.Hour)
+
+	newResult := func(account, value string) *CostResult {
+		result := NewCostResult()
+		result.AddDatapoint("cost", CostSeriesGroupKeys{{Name: UniversalDimensionAccount, Value: account}},
+			CostSeriesDatapoint{Start: dayAgo, End: now, Value: value, Unit: "USD"})
+		return result
+	}
+
+	mc := &MultiCoster{Costers: []Coster{
+		&mockProviderCoster{mockCoster: mockCoster{result: newResult("111", "10.00")}, providerType: "aws"},
+		&mockProviderCoster{mockCoster: mockCoster{result: newResult("222", "20.00")}, providerType: "gcp"},
+		// A coster that cannot name its provider still contributes its costs.
+		&mockCoster{result: newResult("333", "30.00")},
+	}}
+
+	result, err := mc.GetCosts(context.Background(), CostQuery{})
+	require.NoError(t, err)
+	require.Len(t, result.Series, 3)
+
+	byAccount := map[string]string{}
+	for _, series := range result.Series {
+		byAccount[series.GroupKeys[0].Value] = series.Provider
+	}
+	assert.Equal(t, "aws", byAccount["111"])
+	assert.Equal(t, "gcp", byAccount["222"])
+	assert.Equal(t, "", byAccount["333"])
+}
+
 func TestMultiCoster_GetCosts(t *testing.T) {
 	now := time.Now().UTC()
 	dayAgo := now.Add(-24 * time.Hour)
