@@ -20,6 +20,14 @@ type Coster interface {
 	GetCosts(ctx context.Context, query CostQuery) (*CostResult, error)
 }
 
+// ProviderTyped is implemented by costers that can name the cloud provider they report for.
+// MultiCoster stamps this onto every series it collects so consumers can attribute a series to a
+// provider without spending a group-by slot on the cloud account dimension. That matters because
+// AWS Cost Explorer allows at most 2 group definitions per query.
+type ProviderTyped interface {
+	ProviderType() string
+}
+
 type CostQuery struct {
 	Start       time.Time            `json:"start"`
 	End         time.Time            `json:"end"`
@@ -113,6 +121,25 @@ type CostSeries struct {
 	MetricName string                `json:"metricName"`
 	GroupKeys  CostSeriesGroupKeys   `json:"groupKeys"`
 	Points     []CostSeriesDatapoint `json:"points"`
+	// Provider names the cloud provider that reported this series ("aws", "gcp", ...).
+	// Populated by MultiCoster; empty when a coster runs standalone.
+	Provider string `json:"provider,omitempty"`
+}
+
+// MergeSeries folds every datapoint of series into the result, recording which provider it came
+// from. Datapoints already present (same start+end) are left alone.
+func (r *CostResult) MergeSeries(series CostSeries, provider string) {
+	for _, point := range series.Points {
+		r.MergeDatapoint(series.MetricName, series.GroupKeys, point)
+	}
+	if provider == "" {
+		return
+	}
+	seriesKey := fmt.Sprintf("%s:%s", series.GroupKeys.UniqueIdentifier(), series.MetricName)
+	if cur, ok := r.Series[seriesKey]; ok && cur.Provider == "" {
+		cur.Provider = provider
+		r.Series[seriesKey] = cur
+	}
 }
 
 type CostSeriesGroupKeys []CostSeriesGroupKey

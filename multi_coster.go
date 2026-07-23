@@ -14,6 +14,7 @@ type MultiCoster struct {
 
 type costerResult struct {
 	costResult *CostResult
+	provider   string
 	err        error
 }
 
@@ -25,9 +26,14 @@ func (c *MultiCoster) GetCosts(ctx context.Context, query CostQuery) (*CostResul
 		wg.Add(1)
 		go func(coster Coster) {
 			defer wg.Done()
+			provider := ""
+			if typed, ok := coster.(ProviderTyped); ok {
+				provider = typed.ProviderType()
+			}
 			costResult, err := coster.GetCosts(ctx, query)
 			results <- costerResult{
 				costResult: costResult,
+				provider:   provider,
 				err:        err,
 			}
 		}(cur)
@@ -48,9 +54,7 @@ func (c *MultiCoster) GetCosts(ctx context.Context, query CostQuery) (*CostResul
 			continue
 		}
 		for _, series := range res.costResult.Series {
-			for _, point := range series.Points {
-				combinedResult.MergeDatapoint(series.MetricName, series.GroupKeys, point)
-			}
+			combinedResult.MergeSeries(series, res.provider)
 		}
 	}
 

@@ -21,6 +21,8 @@ type Coster struct {
 	Accessor infra_sdk.AwsAccessor
 }
 
+func (c Coster) ProviderType() string { return "aws" }
+
 func (c Coster) GetCosts(ctx context.Context, query infra_sdk.CostQuery) (*infra_sdk.CostResult, error) {
 	// Cost Explorer is global, use us-east-1 as the region to satisfy the aws sdk
 	awsConfig, err := c.Accessor.NewConfig("us-east-1")

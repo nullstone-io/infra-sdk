@@ -15,6 +15,8 @@ type Coster struct {
 	Accessor infra_sdk.GcpBillingAccessor
 }
 
+func (c Coster) ProviderType() string { return "gcp" }
+
 func (c Coster) GetCosts(ctx context.Context, query infra_sdk.CostQuery) (*infra_sdk.CostResult, error) {
 	ts, err := c.Accessor.GetTokenSource(ctx)
 	if err != nil {
