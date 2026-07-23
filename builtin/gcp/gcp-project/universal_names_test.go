@@ -43,12 +43,23 @@ func TestUniversalTag_ToGcp(t *testing.T) {
 
 func TestUniversalDimension_ToGcpColumn(t *testing.T) {
 	assert.Equal(t, "project.id", UniversalDimension(infra_sdk.UniversalDimensionAccount).ToGcpColumn())
+	assert.Equal(t, "service.description", UniversalDimension(infra_sdk.UniversalDimensionService).ToGcpColumn())
 	assert.Equal(t, "custom-dim", UniversalDimension("custom-dim").ToGcpColumn())
 }
 
 func TestGcpDimension_ToUniversal(t *testing.T) {
 	assert.Equal(t, infra_sdk.UniversalDimensionAccount, GcpDimension("project.id").ToUniversal())
+	assert.Equal(t, infra_sdk.UniversalDimensionService, GcpDimension("service.description").ToUniversal())
 	assert.Equal(t, "custom-dim", GcpDimension("custom-dim").ToUniversal())
+}
+
+func TestRoundTrip_Dimensions(t *testing.T) {
+	dims := []string{infra_sdk.UniversalDimensionAccount, infra_sdk.UniversalDimensionService}
+	for _, dim := range dims {
+		gcpColumn := UniversalDimension(dim).ToGcpColumn()
+		roundTripped := GcpDimension(gcpColumn).ToUniversal()
+		assert.Equal(t, dim, roundTripped, "round trip failed for %s", dim)
+	}
 }
 
 func TestRoundTrip_Tags(t *testing.T) {

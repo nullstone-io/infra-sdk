@@ -6,4 +6,5 @@ const (
 	UniversalTagBlock = "nullstone.io/block"
 
 	UniversalDimensionAccount = "nullstone.io/cloud-account"
+	UniversalDimensionService = "nullstone.io/service"
 )
