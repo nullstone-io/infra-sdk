@@ -16,6 +16,53 @@ const (
 	CostGranularityMonthly CostGranularity = "monthly"
 )
 
+// CostMetric names a cost measure using the FOCUS (FinOps Open Cost and Usage Specification)
+// vocabulary. Every coster reports the subset it can derive; consumers pick the measure they
+// want by name instead of reading a provider-specific metric.
+//
+//	ListCost       -- public list price, before any negotiated or commitment discount
+//	ContractedCost -- list price after negotiated (contract) discounts, before commitment discounts
+//	EffectiveCost  -- amortized cost: contracted cost after commitment discounts, with upfront
+//	                  commitment purchases spread across the usage they cover
+//	BilledCost     -- what the invoice charges for the period (cash basis; upfront purchases land
+//	                  in full, credits and refunds are applied)
+//
+// Savings math: ListCost - ContractedCost is the negotiated discount, ContractedCost - EffectiveCost
+// is the commitment (reservation / savings plan / CUD) discount.
+type CostMetric string
+
+const (
+	CostMetricListCost       CostMetric = "ListCost"
+	CostMetricContractedCost CostMetric = "ContractedCost"
+	CostMetricEffectiveCost  CostMetric = "EffectiveCost"
+	CostMetricBilledCost     CostMetric = "BilledCost"
+)
+
+// CostMetricDefault is the measure consumers should show when they only want one number.
+// Amortized cost is the fairest day-to-day view: commitments are spread across the usage they
+// discount instead of spiking on the day they were purchased.
+const CostMetricDefault = CostMetricEffectiveCost
+
+func AllCostMetrics() []CostMetric {
+	return []CostMetric{CostMetricListCost, CostMetricContractedCost, CostMetricEffectiveCost, CostMetricBilledCost}
+}
+
+func (m CostMetric) IsValid() bool {
+	return slices.Contains(AllCostMetrics(), m)
+}
+
+// CostChargeCategory is the FOCUS ChargeCategory: the kind of charge a row represents.
+// It is the value of the UniversalDimensionChargeCategory group key.
+type CostChargeCategory string
+
+const (
+	CostChargeCategoryUsage      CostChargeCategory = "Usage"
+	CostChargeCategoryPurchase   CostChargeCategory = "Purchase"
+	CostChargeCategoryTax        CostChargeCategory = "Tax"
+	CostChargeCategoryCredit     CostChargeCategory = "Credit"
+	CostChargeCategoryAdjustment CostChargeCategory = "Adjustment"
+)
+
 type Coster interface {
 	GetCosts(ctx context.Context, query CostQuery) (*CostResult, error)
 }
@@ -36,9 +83,28 @@ type CostQuery struct {
 	GroupBy     CostGroupIdentifiers `json:"groupBy"`
 }
 
+// CostFilterTag restricts a query to resources whose tag Key has one of Values.
+// An empty string in Values matches resources that do not carry the tag at all, which is how a
+// caller asks for the untagged ("unmanaged") remainder.
 type CostFilterTag struct {
 	Key    string   `json:"key"`
 	Values []string `json:"values"`
+}
+
+// MatchesAbsent reports whether the filter asks for resources without the tag.
+func (t CostFilterTag) MatchesAbsent() bool {
+	return slices.Contains(t.Values, "")
+}
+
+// PresentValues returns Values without the empty-string "absent" marker.
+func (t CostFilterTag) PresentValues() []string {
+	result := make([]string, 0, len(t.Values))
+	for _, v := range t.Values {
+		if v != "" {
+			result = append(result, v)
+		}
+	}
+	return result
 }
 
 type CostGroupIdentifiers []CostGroupIdentifier
@@ -74,12 +140,12 @@ type CostResult struct {
 	Series map[string]CostSeries `json:"series"`
 }
 
-func (r *CostResult) AddDatapoint(metricName string, groupKeys CostSeriesGroupKeys, datapoint CostSeriesDatapoint) {
-	seriesKey := fmt.Sprintf("%s:%s", groupKeys.UniqueIdentifier(), metricName)
+func (r *CostResult) AddDatapoint(metric CostMetric, groupKeys CostSeriesGroupKeys, datapoint CostSeriesDatapoint) {
+	seriesKey := fmt.Sprintf("%s:%s", groupKeys.UniqueIdentifier(), metric)
 	cur, ok := r.Series[seriesKey]
 	if !ok {
 		cur = CostSeries{
-			MetricName: metricName,
+			MetricName: metric,
 			GroupKeys:  groupKeys,
 			Points:     []CostSeriesDatapoint{},
 		}
@@ -90,12 +156,12 @@ func (r *CostResult) AddDatapoint(metricName string, groupKeys CostSeriesGroupKe
 
 // MergeDatapoint acts like AddDatapoint except it will not add a duplicate datapoint
 // This is detected by comparing start+end times on the datapoint
-func (r *CostResult) MergeDatapoint(metricName string, groupKeys CostSeriesGroupKeys, datapoint CostSeriesDatapoint) {
-	seriesKey := fmt.Sprintf("%s:%s", groupKeys.UniqueIdentifier(), metricName)
+func (r *CostResult) MergeDatapoint(metric CostMetric, groupKeys CostSeriesGroupKeys, datapoint CostSeriesDatapoint) {
+	seriesKey := fmt.Sprintf("%s:%s", groupKeys.UniqueIdentifier(), metric)
 	cur, ok := r.Series[seriesKey]
 	if !ok {
 		cur = CostSeries{
-			MetricName: metricName,
+			MetricName: metric,
 			GroupKeys:  groupKeys,
 			Points:     []CostSeriesDatapoint{},
 		}
@@ -118,7 +184,7 @@ func NewCostResult() *CostResult {
 }
 
 type CostSeries struct {
-	MetricName string                `json:"metricName"`
+	MetricName CostMetric            `json:"metricName"`
 	GroupKeys  CostSeriesGroupKeys   `json:"groupKeys"`
 	Points     []CostSeriesDatapoint `json:"points"`
 	// Provider names the cloud provider that reported this series ("aws", "gcp", ...).

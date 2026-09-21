@@ -10,6 +10,8 @@ func (d AwsDimension) ToUniversal() string {
 		return infra_sdk.UniversalDimensionAccount
 	case "SERVICE":
 		return infra_sdk.UniversalDimensionService
+	case "RECORD_TYPE":
+		return infra_sdk.UniversalDimensionChargeCategory
 	}
 	return string(d)
 }
@@ -22,8 +24,32 @@ func (d UniversalDimension) ToAws() string {
 		return "LINKED_ACCOUNT"
 	case infra_sdk.UniversalDimensionService:
 		return "SERVICE"
+	case infra_sdk.UniversalDimensionChargeCategory:
+		return "RECORD_TYPE"
 	}
 	return string(d)
+}
+
+// AwsRecordType is a value of the Cost Explorer RECORD_TYPE dimension (the CUR line_item_type).
+type AwsRecordType string
+
+// ToChargeCategory maps a Cost Explorer record type onto the FOCUS ChargeCategory.
+// This follows the AWS FOCUS 1.0/1.2 data export mapping of line_item_type.
+func (r AwsRecordType) ToChargeCategory() infra_sdk.CostChargeCategory {
+	switch r {
+	case "Usage", "DiscountedUsage", "SavingsPlanCoveredUsage", "Support":
+		return infra_sdk.CostChargeCategoryUsage
+	case "Fee", "RIFee", "SavingsPlanUpfrontFee", "SavingsPlanRecurringFee":
+		return infra_sdk.CostChargeCategoryPurchase
+	case "Tax":
+		return infra_sdk.CostChargeCategoryTax
+	case "Credit", "Refund":
+		return infra_sdk.CostChargeCategoryCredit
+	case "SavingsPlanNegation", "Enterprise Discount Program Discount", "Solution Provider Program Discount",
+		"Bundled Discount", "Private Rate Discount", "Distributor Discount":
+		return infra_sdk.CostChargeCategoryAdjustment
+	}
+	return infra_sdk.CostChargeCategoryAdjustment
 }
 
 type AwsTag string

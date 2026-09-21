@@ -18,14 +18,15 @@ type CostResultAggregator struct {
 	CostResult *infra_sdk.CostResult
 }
 
-// costRow represents a single row from the BigQuery billing export query.
-// Field names must match the column aliases produced by QueryBuilder.
-type costRow struct {
-	PeriodStart bigquery.NullTimestamp `bigquery:"period_start"`
-	PeriodEnd   bigquery.NullTimestamp `bigquery:"period_end"`
-	TotalCost   float64                `bigquery:"total_cost"`
-	Currency    bigquery.NullString    `bigquery:"currency"`
-	// Dynamic group-by columns are read separately via row.Columns
+// metricColumns maps the measure columns produced by QueryBuilder onto FOCUS metrics.
+var metricColumns = []struct {
+	column string
+	metric infra_sdk.CostMetric
+}{
+	{"list_cost", infra_sdk.CostMetricListCost},
+	{"contracted_cost", infra_sdk.CostMetricContractedCost},
+	{"effective_cost", infra_sdk.CostMetricEffectiveCost},
+	{"billed_cost", infra_sdk.CostMetricBilledCost},
 }
 
 func (a *CostResultAggregator) AddRow(row map[string]bigquery.Value, groupBy infra_sdk.CostGroupIdentifiers) error {
@@ -38,17 +39,22 @@ func (a *CostResultAggregator) AddRow(row map[string]bigquery.Value, groupBy inf
 		return fmt.Errorf("error parsing period_end: %w", err)
 	}
 
-	totalCost, _ := row["total_cost"].(float64)
 	currency, _ := row["currency"].(string)
-
 	groupKeys := a.parseGroupKeys(row, groupBy)
 
-	a.CostResult.AddDatapoint("UnblendedCost", groupKeys, infra_sdk.CostSeriesDatapoint{
-		Start: periodStart,
-		End:   periodEnd,
-		Unit:  currency,
-		Value: fmt.Sprintf("%f", totalCost),
-	})
+	for _, mc := range metricColumns {
+		value, ok := row[mc.column].(float64)
+		if !ok {
+			// a NULL aggregate means the export has no rows for this measure; report nothing rather than zero
+			continue
+		}
+		a.CostResult.AddDatapoint(mc.metric, groupKeys, infra_sdk.CostSeriesDatapoint{
+			Start: periodStart,
+			End:   periodEnd,
+			Unit:  currency,
+			Value: fmt.Sprintf("%f", value),
+		})
+	}
 
 	return nil
 }
@@ -59,6 +65,9 @@ func (a *CostResultAggregator) parseGroupKeys(row map[string]bigquery.Value, gro
 		if grp.Dimension != "" {
 			alias := fmt.Sprintf("dim_%d", i)
 			value, _ := row[alias].(string)
+			if grp.Dimension == infra_sdk.UniversalDimensionChargeCategory {
+				value = string(GcpCostType(value).ToChargeCategory())
+			}
 			result = append(result, infra_sdk.CostSeriesGroupKey{
 				Name:  GcpDimension(UniversalDimension(grp.Dimension).ToGcpColumn()).ToUniversal(),
 				Value: value,
