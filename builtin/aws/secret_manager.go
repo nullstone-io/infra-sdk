@@ -30,22 +30,25 @@ func (s SecretManager) List(ctx context.Context, location types.SecretLocation) 
 		return nil, nil
 	}
 
-	input := &secretsmanager.ListSecretsInput{}
-	out, err := client.ListSecrets(ctx, input)
-	if err != nil {
-		return nil, fmt.Errorf("error listing secrets: %w", err)
-	}
+	// ListSecrets returns at most 100 secrets per page, so we have to walk every page to list them all
 	result := make([]types.Secret, 0)
-	for _, cur := range out.SecretList {
-		result = append(result, types.Secret{
-			Identity: s.secretIdentityFromAws(cur.ARN, cur.Name, cur.PrimaryRegion),
-			Metadata: map[string]any{
-				"description": cur.Description,
-				"tags":        cur.Tags,
-			},
-			Value:    "",
-			Redacted: true,
-		})
+	paginator := secretsmanager.NewListSecretsPaginator(client, &secretsmanager.ListSecretsInput{})
+	for paginator.HasMorePages() {
+		out, err := paginator.NextPage(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("error listing secrets: %w", err)
+		}
+		for _, cur := range out.SecretList {
+			result = append(result, types.Secret{
+				Identity: s.secretIdentityFromAws(cur.ARN, cur.Name, cur.PrimaryRegion),
+				Metadata: map[string]any{
+					"description": cur.Description,
+					"tags":        cur.Tags,
+				},
+				Value:    "",
+				Redacted: true,
+			})
+		}
 	}
 	return result, nil
 }
