@@ -26,9 +26,12 @@ func TestQueryBuilder_Build_BasicDaily(t *testing.T) {
 	assert.Contains(t, result.SQL, "usage_start_time >= @start_time")
 	assert.Contains(t, result.SQL, "usage_start_time < @end_time")
 
-	require.Len(t, result.Params, 2)
-	assert.Equal(t, "start_time", result.Params[0].Name)
-	assert.Equal(t, "end_time", result.Params[1].Name)
+	// credit-type sets + start/end
+	require.Len(t, result.Params, 4)
+	assert.Equal(t, "negotiated_credit_types", result.Params[0].Name)
+	assert.Equal(t, "amortized_credit_types", result.Params[1].Name)
+	assert.Equal(t, "start_time", result.Params[2].Name)
+	assert.Equal(t, "end_time", result.Params[3].Name)
 }
 
 func TestQueryBuilder_Build_MonthlyGranularity(t *testing.T) {
@@ -105,8 +108,8 @@ func TestQueryBuilder_Build_WithFilterTags(t *testing.T) {
 	assert.Contains(t, result.SQL, "EXISTS(SELECT 1 FROM UNNEST(labels) l WHERE l.key = @filter_key_0 AND l.value IN UNNEST(@filter_vals_0))")
 	assert.Contains(t, result.SQL, "EXISTS(SELECT 1 FROM UNNEST(labels) l WHERE l.key = @filter_key_1 AND l.value IN UNNEST(@filter_vals_1))")
 
-	// start_time, end_time, + 2 key params + 2 val params = 6
-	require.Len(t, result.Params, 6)
+	// 2 credit-type sets, start_time, end_time, + 2 key params + 2 val params = 8
+	require.Len(t, result.Params, 8)
 
 	// Verify the filter key params use GCP label names
 	paramMap := map[string]interface{}{}
@@ -170,4 +173,85 @@ func TestQueryBuilder_Build_MixedGroupBy(t *testing.T) {
 	assert.Contains(t, result.SQL, "project.id AS dim_0")
 	assert.Contains(t, result.SQL, "(SELECT l.value FROM UNNEST(labels) l WHERE l.key = @grp_label_1) AS label_1")
 	assert.Contains(t, result.SQL, "GROUP BY period_start, period_end, dim_0, label_1, currency")
+}
+
+func TestQueryBuilder_Build_SelectsFocusMeasures(t *testing.T) {
+	builder := &QueryBuilder{Table: "ds.table"}
+	result := builder.Build(infra_sdk.CostQuery{
+		Start:       time.Now(),
+		End:         time.Now(),
+		Granularity: infra_sdk.CostGranularityDaily,
+	})
+
+	assert.Contains(t, result.SQL, "SUM(IFNULL(cost_at_list, cost)) AS list_cost")
+	assert.Contains(t, result.SQL, "WHERE c.type IN UNNEST(@negotiated_credit_types)), 0)) AS contracted_cost")
+	assert.Contains(t, result.SQL, "WHERE c.type IN UNNEST(@amortized_credit_types)), 0)) AS effective_cost")
+	assert.Contains(t, result.SQL, "SUM(cost) + SUM(IFNULL((SELECT SUM(c.amount) FROM UNNEST(credits) c), 0)) AS billed_cost")
+	assert.NotContains(t, result.SQL, "total_cost")
+
+	paramMap := map[string]interface{}{}
+	for _, p := range result.Params {
+		paramMap[p.Name] = p.Value
+	}
+	assert.Equal(t, []string{"DISCOUNT", "RESELLER_MARGIN"}, paramMap["negotiated_credit_types"])
+	// amortized credits are a superset of negotiated credits
+	amortized := paramMap["amortized_credit_types"].([]string)
+	assert.Subset(t, amortized, []string{"DISCOUNT", "RESELLER_MARGIN", "COMMITTED_USAGE_DISCOUNT", "SUSTAINED_USAGE_DISCOUNT"})
+	assert.NotContains(t, amortized, "PROMOTION")
+}
+
+func TestQueryBuilder_Build_WithAbsentFilterTag(t *testing.T) {
+	builder := &QueryBuilder{Table: "ds.table"}
+	result := builder.Build(infra_sdk.CostQuery{
+		Start:       time.Now(),
+		End:         time.Now(),
+		Granularity: infra_sdk.CostGranularityDaily,
+		FilterTags: []infra_sdk.CostFilterTag{
+			{Key: infra_sdk.UniversalTagStack, Values: []string{""}},
+		},
+	})
+
+	// An empty value asks for rows without the label; there is no value list to bind
+	assert.Contains(t, result.SQL, "NOT EXISTS(SELECT 1 FROM UNNEST(labels) l WHERE l.key = @filter_key_0)")
+	assert.NotContains(t, result.SQL, "@filter_vals_0")
+	for _, p := range result.Params {
+		assert.NotEqual(t, "filter_vals_0", p.Name)
+	}
+}
+
+func TestQueryBuilder_Build_WithPresentAndAbsentFilterTag(t *testing.T) {
+	builder := &QueryBuilder{Table: "ds.table"}
+	result := builder.Build(infra_sdk.CostQuery{
+		Start:       time.Now(),
+		End:         time.Now(),
+		Granularity: infra_sdk.CostGranularityDaily,
+		FilterTags: []infra_sdk.CostFilterTag{
+			{Key: infra_sdk.UniversalTagStack, Values: []string{"my-stack", ""}},
+		},
+	})
+
+	assert.Contains(t, result.SQL,
+		"(EXISTS(SELECT 1 FROM UNNEST(labels) l WHERE l.key = @filter_key_0 AND l.value IN UNNEST(@filter_vals_0)) OR NOT EXISTS(SELECT 1 FROM UNNEST(labels) l WHERE l.key = @filter_key_0))")
+
+	paramMap := map[string]interface{}{}
+	for _, p := range result.Params {
+		paramMap[p.Name] = p.Value
+	}
+	// the absent marker is stripped from the bound values
+	assert.Equal(t, []string{"my-stack"}, paramMap["filter_vals_0"])
+}
+
+func TestQueryBuilder_Build_WithGroupByChargeCategory(t *testing.T) {
+	builder := &QueryBuilder{Table: "ds.table"}
+	result := builder.Build(infra_sdk.CostQuery{
+		Start:       time.Now(),
+		End:         time.Now(),
+		Granularity: infra_sdk.CostGranularityDaily,
+		GroupBy: infra_sdk.CostGroupIdentifiers{
+			{Dimension: infra_sdk.UniversalDimensionChargeCategory},
+		},
+	})
+
+	assert.Contains(t, result.SQL, "cost_type AS dim_0")
+	assert.Contains(t, result.SQL, "GROUP BY period_start, period_end, dim_0, currency")
 }

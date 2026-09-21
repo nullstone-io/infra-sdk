@@ -29,8 +29,13 @@ func (a *CostResultAggregator) AddResults(resultsByTime []cetypes.ResultByTime, 
 
 		for _, grp := range resultByTime.Groups {
 			grpKeys := a.parseResultGroupKeys(inputGroups, grp.Keys)
-			for metricName, metricValue := range grp.Metrics {
-				a.CostResult.AddDatapoint(metricName, grpKeys, infra_sdk.CostSeriesDatapoint{
+			for ceMetricName, metricValue := range grp.Metrics {
+				metric, ok := ceMetrics[ceMetricName]
+				if !ok {
+					// Cost Explorer only returns what we asked for; anything else is not a FOCUS measure we report
+					continue
+				}
+				a.CostResult.AddDatapoint(metric, grpKeys, infra_sdk.CostSeriesDatapoint{
 					Start: start,
 					End:   end,
 					Unit:  unptr(metricValue.Unit),
@@ -74,9 +79,13 @@ func (a *CostResultAggregator) parseResultGroupKeys(inputGroups infra_sdk.CostGr
 			if i < len(inputGroups) {
 				name = inputGroups[i].Dimension
 			}
+			value := key
+			if name == infra_sdk.UniversalDimensionChargeCategory {
+				value = string(AwsRecordType(key).ToChargeCategory())
+			}
 			result = append(result, infra_sdk.CostSeriesGroupKey{
 				Name:  name,
-				Value: key,
+				Value: value,
 			})
 		}
 	}

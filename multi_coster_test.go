@@ -34,7 +34,7 @@ func TestMultiCoster_StampsProvider(t *testing.T) {
 
 	newResult := func(account, value string) *CostResult {
 		result := NewCostResult()
-		result.AddDatapoint("cost", CostSeriesGroupKeys{{Name: UniversalDimensionAccount, Value: account}},
+		result.AddDatapoint(CostMetricEffectiveCost, CostSeriesGroupKeys{{Name: UniversalDimensionAccount, Value: account}},
 			CostSeriesDatapoint{Start: dayAgo, End: now, Value: value, Unit: "USD"})
 		return result
 	}
@@ -82,8 +82,8 @@ func TestMultiCoster_GetCosts(t *testing.T) {
 				&mockCoster{
 					result: &CostResult{
 						Series: map[string]CostSeries{
-							"nullstone.io/cloud-account$123:cost": {
-								MetricName: "cost",
+							"nullstone.io/cloud-account$123:EffectiveCost": {
+								MetricName: CostMetricEffectiveCost,
 								GroupKeys:  CostSeriesGroupKeys{{Name: UniversalDimensionAccount, Value: "123"}},
 								Points: []CostSeriesDatapoint{{
 									Start: dayAgo,
@@ -99,9 +99,9 @@ func TestMultiCoster_GetCosts(t *testing.T) {
 			expectError: false,
 			validate: func(t *testing.T, result *CostResult) {
 				require.Len(t, result.Series, 1)
-				series, exists := result.Series["nullstone.io/cloud-account$123:cost"]
+				series, exists := result.Series["nullstone.io/cloud-account$123:EffectiveCost"]
 				require.True(t, exists)
-				assert.Equal(t, "cost", series.MetricName)
+				assert.Equal(t, CostMetricEffectiveCost, series.MetricName)
 				require.Len(t, series.Points, 1)
 				assert.Equal(t, "100.00", series.Points[0].Value)
 			},
@@ -113,7 +113,7 @@ func TestMultiCoster_GetCosts(t *testing.T) {
 					result: &CostResult{
 						Series: map[string]CostSeries{
 							"nullstone-io/cloud-account$123": {
-								MetricName: "cost",
+								MetricName: CostMetricEffectiveCost,
 								GroupKeys:  CostSeriesGroupKeys{{Name: UniversalDimensionAccount, Value: "123"}},
 								Points: []CostSeriesDatapoint{{
 									Start: dayAgo,
@@ -129,7 +129,7 @@ func TestMultiCoster_GetCosts(t *testing.T) {
 					result: &CostResult{
 						Series: map[string]CostSeries{
 							"nullstone-io/cloud-account$456": {
-								MetricName: "cost",
+								MetricName: CostMetricEffectiveCost,
 								GroupKeys:  CostSeriesGroupKeys{{Name: UniversalDimensionAccount, Value: "456"}},
 								Points: []CostSeriesDatapoint{{
 									Start: dayAgo,
@@ -146,15 +146,15 @@ func TestMultiCoster_GetCosts(t *testing.T) {
 			validate: func(t *testing.T, result *CostResult) {
 				require.Len(t, result.Series, 2)
 
-				series1, exists := result.Series["nullstone.io/cloud-account$123:cost"]
+				series1, exists := result.Series["nullstone.io/cloud-account$123:EffectiveCost"]
 				require.True(t, exists)
-				assert.Equal(t, "cost", series1.MetricName)
+				assert.Equal(t, CostMetricEffectiveCost, series1.MetricName)
 				require.Len(t, series1.Points, 1)
 				assert.Equal(t, "100.00", series1.Points[0].Value)
 
-				series2, exists := result.Series["nullstone.io/cloud-account$456:cost"]
+				series2, exists := result.Series["nullstone.io/cloud-account$456:EffectiveCost"]
 				require.True(t, exists)
-				assert.Equal(t, "cost", series2.MetricName)
+				assert.Equal(t, CostMetricEffectiveCost, series2.MetricName)
 				require.Len(t, series2.Points, 1)
 				assert.Equal(t, "200.00", series2.Points[0].Value)
 			},
@@ -166,7 +166,7 @@ func TestMultiCoster_GetCosts(t *testing.T) {
 					result: &CostResult{
 						Series: map[string]CostSeries{
 							"nullstone-io/cloud-account$123": {
-								MetricName: "cost",
+								MetricName: CostMetricEffectiveCost,
 								GroupKeys:  CostSeriesGroupKeys{{Name: UniversalDimensionAccount, Value: "123"}},
 								Points: []CostSeriesDatapoint{{
 									Start: dayAgo,
@@ -182,7 +182,7 @@ func TestMultiCoster_GetCosts(t *testing.T) {
 					result: &CostResult{
 						Series: map[string]CostSeries{
 							"nullstone-io/cloud-account$123": {
-								MetricName: "cost",
+								MetricName: CostMetricEffectiveCost,
 								GroupKeys:  CostSeriesGroupKeys{{Name: UniversalDimensionAccount, Value: "123"}},
 								Points: []CostSeriesDatapoint{{
 									Start: dayAgo,
@@ -198,9 +198,9 @@ func TestMultiCoster_GetCosts(t *testing.T) {
 			expectError: false,
 			validate: func(t *testing.T, result *CostResult) {
 				require.Len(t, result.Series, 1)
-				series, exists := result.Series["nullstone.io/cloud-account$123:cost"]
+				series, exists := result.Series["nullstone.io/cloud-account$123:EffectiveCost"]
 				require.True(t, exists)
-				assert.Equal(t, "cost", series.MetricName)
+				assert.Equal(t, CostMetricEffectiveCost, series.MetricName)
 				// Should only have one point since the second one is a duplicate
 				require.Len(t, series.Points, 1)
 			},
