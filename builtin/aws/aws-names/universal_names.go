@@ -1,4 +1,4 @@
-package aws_account
+package aws_names
 
 import infra_sdk "github.com/nullstone-io/infra-sdk"
 

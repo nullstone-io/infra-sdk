@@ -3,164 +3,148 @@ package aws_account
 import (
 	"context"
 	"fmt"
+	"time"
 
-	ce "github.com/aws/aws-sdk-go-v2/service/costexplorer"
-	cetypes "github.com/aws/aws-sdk-go-v2/service/costexplorer/types"
 	infra_sdk "github.com/nullstone-io/infra-sdk"
+	aws_data_export "github.com/nullstone-io/infra-sdk/builtin/aws/aws-data-export"
 )
 
-var (
-	granularityMappings = map[infra_sdk.CostGranularity]cetypes.Granularity{
-		infra_sdk.CostGranularityHourly:  cetypes.GranularityHourly,
-		infra_sdk.CostGranularityDaily:   cetypes.GranularityDaily,
-		infra_sdk.CostGranularityMonthly: cetypes.GranularityMonthly,
-	}
-
-	// ceMetrics maps the Cost Explorer metrics we request onto the FOCUS measures they represent.
-	//
-	// Cost Explorer has no list price, so ListCost and ContractedCost cannot be produced from
-	// this coster; callers that need the discount view have to ingest a CUR/Data Export instead.
-	//   NetUnblendedCost -- invoice-basis cost after credits/refunds/discounts    -> BilledCost
-	//   NetAmortizedCost -- upfront RI/SP fees spread over the usage they cover  -> EffectiveCost
-	ceMetrics = map[string]infra_sdk.CostMetric{
-		"NetUnblendedCost": infra_sdk.CostMetricBilledCost,
-		"NetAmortizedCost": infra_sdk.CostMetricEffectiveCost,
-	}
-)
-
-// SupportedMetrics lists the FOCUS measures Cost Explorer can report.
-func SupportedMetrics() []infra_sdk.CostMetric {
-	return []infra_sdk.CostMetric{infra_sdk.CostMetricBilledCost, infra_sdk.CostMetricEffectiveCost}
-}
-
+// Coster reports costs for an AWS account. Cost Explorer is always available and answers every
+// month; a FOCUS 1.2 Data Export, when configured, answers the months it has delivered with the
+// full set of measures and resource-level detail. Consumers ask one coster and never see the
+// split: GetCosts routes each billing month to the richest source that covers it, and
+// MonthSource tells them which source that was and what it could report.
+//
+// Cost Explorer remains the reference for reconciliation (ReferenceCoster) because it is the
+// provider's own bill; an exported month is checked against it, not the other way round.
 type Coster struct {
 	Accessor infra_sdk.AwsAccessor
+	// Export is the location of a FOCUS 1.2 Data Export. Nil means Cost Explorer only, which is
+	// what the live query path wants: reading an export streams gzip CSV from S3 per request.
+	Export *aws_data_export.Location
+	// ExportRegion is the export bucket's region. Empty means us-east-1.
+	ExportRegion string
+
+	// costExplorer and export stand in for the real sources in tests.
+	costExplorer infra_sdk.Coster
+	export       exportSource
+}
+
+// exportSource is the part of aws_data_export.Coster the routing needs.
+type exportSource interface {
+	infra_sdk.Coster
+	HasMonth(ctx context.Context, month time.Time) (string, bool, error)
 }
 
 func (c Coster) ProviderType() string { return "aws" }
 
-func (c Coster) GetCosts(ctx context.Context, query infra_sdk.CostQuery) (*infra_sdk.CostResult, error) {
-	// Cost Explorer is global, use us-east-1 as the region to satisfy the aws sdk
-	awsConfig, err := c.Accessor.NewConfig("us-east-1")
-	if err != nil {
-		return nil, fmt.Errorf("error resolving aws config: %w", err)
+func (c Coster) costExplorerCoster() infra_sdk.Coster {
+	if c.costExplorer != nil {
+		return c.costExplorer
 	}
-	if awsConfig == nil {
-		return nil, nil
-	}
-	client := ce.NewFromConfig(*awsConfig)
-
-	period := &cetypes.DateInterval{
-		Start: ptr(query.Start.Format("2006-01-02")),
-		End:   ptr(query.End.Format("2006-01-02")), // end is EXCLUSIVE
-	}
-
-	granularity := granularityMappings[query.Granularity]
-	if granularity == "" {
-		granularity = cetypes.GranularityDaily
-	}
-
-	metrics := make([]string, 0, len(ceMetrics))
-	for name := range ceMetrics {
-		metrics = append(metrics, name)
-	}
-
-	groupBy := query.GroupBy.Unique()
-	input := &ce.GetCostAndUsageInput{
-		TimePeriod:  period,
-		Granularity: granularity,
-		Metrics:     metrics,
-		Filter:      costQueryToFilter(query),
-		GroupBy:     costQueryToGroupBy(groupBy),
-	}
-
-	aggregator := NewCostResultAggregator()
-	var nextToken *string
-	for {
-		input.NextPageToken = nextToken
-		out, err := client.GetCostAndUsage(ctx, input)
-		if err != nil {
-			return nil, fmt.Errorf("error querying aws cost explorer: %w", err)
-		}
-		if err := aggregator.AddResults(out.ResultsByTime, groupBy); err != nil {
-			return nil, fmt.Errorf("error aggregating results: %w", err)
-		}
-		if out.NextPageToken == nil || *out.NextPageToken == "" {
-			break
-		}
-		nextToken = out.NextPageToken
-	}
-
-	return aggregator.CostResult, nil
+	return CostExplorerCoster{Accessor: c.Accessor}
 }
 
-func costQueryToFilter(query infra_sdk.CostQuery) *cetypes.Expression {
-	if len(query.FilterTags) < 1 {
+func (c Coster) exportCoster() exportSource {
+	if c.export != nil {
+		return c.export
+	}
+	if c.Export == nil {
 		return nil
 	}
-	if len(query.FilterTags) == 1 {
-		return filterTagToExpression(query.FilterTags[0])
-	}
-
-	root := &cetypes.Expression{}
-	for _, filterTag := range query.FilterTags {
-		root.And = append(root.And, *filterTagToExpression(filterTag))
-	}
-	return root
+	return aws_data_export.Coster{Accessor: c.Accessor, Location: *c.Export, Region: c.ExportRegion}
 }
 
-// filterTagToExpression builds the Cost Explorer expression for one tag filter.
-// An empty-string value means "resources without this tag" (see infra_sdk.CostFilterTag), which
-// Cost Explorer expresses with the ABSENT match option. When both present values and the absent
-// marker are requested, the two are OR'd together.
-func filterTagToExpression(filterTag infra_sdk.CostFilterTag) *cetypes.Expression {
-	key := ptr(UniversalTag(filterTag.Key).ToAws())
-	present := filterTag.PresentValues()
-
-	var presentExpr, absentExpr *cetypes.Expression
-	if len(present) > 0 {
-		presentExpr = &cetypes.Expression{
-			Tags: &cetypes.TagValues{
-				Key:          key,
-				MatchOptions: []cetypes.MatchOption{cetypes.MatchOptionEquals},
-				Values:       present,
-			},
-		}
-	}
-	if filterTag.MatchesAbsent() {
-		absentExpr = &cetypes.Expression{
-			Tags: &cetypes.TagValues{
-				Key:          key,
-				MatchOptions: []cetypes.MatchOption{cetypes.MatchOptionAbsent},
-			},
-		}
-	}
-
-	switch {
-	case presentExpr != nil && absentExpr != nil:
-		return &cetypes.Expression{Or: []cetypes.Expression{*presentExpr, *absentExpr}}
-	case absentExpr != nil:
-		return absentExpr
-	default:
-		return presentExpr
-	}
+// ReferenceCoster is Cost Explorer: the provider's own bill, which exported months reconcile against.
+func (c Coster) ReferenceCoster() infra_sdk.Coster {
+	return c.costExplorerCoster()
 }
 
-func costQueryToGroupBy(groupBy infra_sdk.CostGroupIdentifiers) []cetypes.GroupDefinition {
-	var defs []cetypes.GroupDefinition
-	for _, cur := range groupBy {
-		if cur.Dimension != "" {
-			defs = append(defs, cetypes.GroupDefinition{
-				Key:  ptr(UniversalDimension(cur.Dimension).ToAws()),
-				Type: cetypes.GroupDefinitionTypeDimension,
-			})
-		} else if cur.TagKey != "" {
-			defs = append(defs, cetypes.GroupDefinition{
-				Key:  ptr(UniversalTag(cur.TagKey).ToAws()),
-				Type: cetypes.GroupDefinitionTypeTag,
-			})
+// MonthSource reports the Data Export when it has delivered the month, else Cost Explorer.
+func (c Coster) MonthSource(ctx context.Context, month time.Time) (infra_sdk.CostSource, error) {
+	if export := c.exportCoster(); export != nil {
+		etag, ok, err := export.HasMonth(ctx, month)
+		if err != nil {
+			return infra_sdk.CostSource{}, fmt.Errorf("error checking data export for %s: %w", month.UTC().Format("2006-01"), err)
 		}
-
+		if ok {
+			return infra_sdk.CostSource{Name: infra_sdk.CostSourceFocusExport, Version: etag, Capabilities: aws_data_export.Capabilities()}, nil
+		}
 	}
-	return defs
+	return infra_sdk.CostSource{Name: infra_sdk.CostSourceCostExplorer, Capabilities: CostExplorerCapabilities()}, nil
+}
+
+// GetCosts answers the query month by month from the source that covers each month, merging the
+// results. A query that fits inside one source is passed through as is. Hourly granularity is
+// always Cost Explorer: the export is delivered daily.
+func (c Coster) GetCosts(ctx context.Context, query infra_sdk.CostQuery) (*infra_sdk.CostResult, error) {
+	ce := c.costExplorerCoster()
+	export := c.exportCoster()
+	if export == nil || query.Granularity == infra_sdk.CostGranularityHourly {
+		return ce.GetCosts(ctx, query)
+	}
+
+	runs, err := c.sourceRuns(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	if len(runs) == 1 && runs[0].start.Equal(query.Start) && runs[0].end.Equal(query.End) {
+		return runs[0].coster(ce, export).GetCosts(ctx, query)
+	}
+
+	result := infra_sdk.NewCostResult()
+	for _, run := range runs {
+		sub := query
+		sub.Start, sub.End = run.start, run.end
+		res, err := run.coster(ce, export).GetCosts(ctx, sub)
+		if err != nil {
+			return nil, err
+		}
+		if res == nil {
+			continue
+		}
+		for _, series := range res.Series {
+			result.MergeSeries(series, "")
+		}
+	}
+	return result, nil
+}
+
+// sourceRun is a contiguous stretch of [start, end) answered by one source.
+type sourceRun struct {
+	start, end time.Time
+	exported   bool
+}
+
+func (r sourceRun) coster(ce infra_sdk.Coster, export exportSource) infra_sdk.Coster {
+	if r.exported {
+		return export
+	}
+	return ce
+}
+
+// sourceRuns splits the query window at every month boundary where the source changes, clipped
+// to the window itself.
+func (c Coster) sourceRuns(ctx context.Context, query infra_sdk.CostQuery) ([]sourceRun, error) {
+	runs := make([]sourceRun, 0)
+	for _, month := range aws_data_export.MonthsInRange(query.Start, query.End) {
+		source, err := c.MonthSource(ctx, month)
+		if err != nil {
+			return nil, err
+		}
+		exported := source.Name == infra_sdk.CostSourceFocusExport
+		start, end := month, month.AddDate(0, 1, 0)
+		if start.Before(query.Start) {
+			start = query.Start
+		}
+		if end.After(query.End) {
+			end = query.End
+		}
+		if n := len(runs); n > 0 && runs[n-1].exported == exported {
+			runs[n-1].end = end
+			continue
+		}
+		runs = append(runs, sourceRun{start: start, end: end, exported: exported})
+	}
+	return runs, nil
 }

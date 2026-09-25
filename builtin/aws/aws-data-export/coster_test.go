@@ -240,9 +240,9 @@ func TestCoster_HasMonth(t *testing.T) {
 
 func TestMonthsInRange(t *testing.T) {
 	jul := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
-	assert.Equal(t, []time.Time{jul, aug2026}, monthsInRange(time.Date(2026, 7, 15, 0, 0, 0, 0, time.UTC), sep2026))
-	assert.Equal(t, []time.Time{aug2026}, monthsInRange(aug2026, time.Date(2026, 8, 2, 0, 0, 0, 0, time.UTC)))
-	assert.Empty(t, monthsInRange(aug2026, aug2026))
+	assert.Equal(t, []time.Time{jul, aug2026}, MonthsInRange(time.Date(2026, 7, 15, 0, 0, 0, 0, time.UTC), sep2026))
+	assert.Equal(t, []time.Time{aug2026}, MonthsInRange(aug2026, time.Date(2026, 8, 2, 0, 0, 0, 0, time.UTC)))
+	assert.Empty(t, MonthsInRange(aug2026, aug2026))
 }
 
 func TestFormatCost(t *testing.T) {

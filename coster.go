@@ -67,6 +67,54 @@ type Coster interface {
 	GetCosts(ctx context.Context, query CostQuery) (*CostResult, error)
 }
 
+// CostCapabilities describes what a cost source can answer. The same provider can expose
+// different capabilities per billing month when a richer source (an AWS Data Export) only covers
+// some months; consumers shape their queries from these rather than from the provider type.
+type CostCapabilities struct {
+	// MaxGroupBy is the most group identifiers one query accepts; 0 means no practical limit.
+	MaxGroupBy int `json:"maxGroupBy"`
+	// Metrics lists the FOCUS measures the source reports. Measures not listed are absent.
+	Metrics []CostMetric `json:"metrics"`
+	// HasChargeCategory reports whether the source can group by UniversalDimensionChargeCategory.
+	// Without it the category has to be inferred by the consumer.
+	HasChargeCategory bool `json:"hasChargeCategory"`
+	// HasResource reports whether the source can group by UniversalDimensionResource.
+	HasResource bool `json:"hasResource"`
+}
+
+// Cost source names: where a billing month's numbers are read from.
+const (
+	// CostSourceCostExplorer is the AWS Cost Explorer API (BilledCost + EffectiveCost only).
+	CostSourceCostExplorer = "cost-explorer"
+	// CostSourceFocusExport is an AWS Data Export in FOCUS 1.2 format (all four measures, resource grain).
+	CostSourceFocusExport = "focus-export"
+	// CostSourceBillingExport is the GCP BigQuery billing export.
+	CostSourceBillingExport = "billing-export"
+)
+
+// CostSource identifies which source a MonthCoster reads a billing month from.
+type CostSource struct {
+	// Name is one of the CostSource* constants.
+	Name string `json:"name"`
+	// Version identifies the current refresh of the source for the month (an export's manifest
+	// ETag). Empty when the source has no such identity (an API).
+	Version      string           `json:"version,omitempty"`
+	Capabilities CostCapabilities `json:"capabilities"`
+}
+
+// MonthCoster is a Coster that reads billing months from whichever of its sources covers them.
+// A provider with one source answers the same for every month; a provider with an optional richer
+// source (AWS with a Data Export) answers per month, and GetCosts routes each month accordingly.
+type MonthCoster interface {
+	Coster
+	// MonthSource reports which source answers the billing month and what it can do.
+	MonthSource(ctx context.Context, month time.Time) (CostSource, error)
+	// ReferenceCoster is the coster whose totals match the provider's own bill. When a month is
+	// read from a richer source, its total is reconciled against this one. A provider with a
+	// single source returns itself.
+	ReferenceCoster() Coster
+}
+
 // ProviderTyped is implemented by costers that can name the cloud provider they report for.
 // MultiCoster stamps this onto every series it collects so consumers can attribute a series to a
 // provider without spending a group-by slot on the cloud account dimension. That matters because

@@ -11,7 +11,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	infra_sdk "github.com/nullstone-io/infra-sdk"
-	aws_account "github.com/nullstone-io/infra-sdk/builtin/aws/aws-account"
+	aws_names "github.com/nullstone-io/infra-sdk/builtin/aws/aws-names"
 )
 
 // SupportedMetrics lists the FOCUS measures a Data Export reports: all four, by specification.
@@ -19,12 +19,18 @@ func SupportedMetrics() []infra_sdk.CostMetric {
 	return infra_sdk.AllCostMetrics()
 }
 
+// Capabilities describes the Data Export tier: one query answers any grouping, every measure is
+// reported, and rows carry the FOCUS charge category and billed resource.
+func Capabilities() infra_sdk.CostCapabilities {
+	return infra_sdk.CostCapabilities{MaxGroupBy: 0, Metrics: SupportedMetrics(), HasChargeCategory: true, HasResource: true}
+}
+
 // Coster answers cost queries from an AWS Data Export (FOCUS 1.2, daily, gzip/csv) in S3.
 //
 // Unlike Cost Explorer it reports ListCost and ContractedCost, carries the FOCUS ChargeCategory,
 // and can group by resource. A query spanning months reads each month's manifest and files;
-// months without a manifest (before the export existed) contribute nothing, so callers that
-// need those months must fall back to another source.
+// months without a manifest (before the export existed) contribute nothing; aws_account.Coster
+// routes those months to Cost Explorer.
 type Coster struct {
 	Accessor infra_sdk.AwsAccessor
 	Location Location
@@ -80,7 +86,7 @@ func (c Coster) GetCosts(ctx context.Context, query infra_sdk.CostQuery) (*infra
 	if err != nil {
 		return nil, err
 	}
-	for _, month := range monthsInRange(query.Start, query.End) {
+	for _, month := range MonthsInRange(query.Start, query.End) {
 		manifest, err := ReadManifest(ctx, api, c.Location, month)
 		if errors.Is(err, ErrNoManifest) {
 			continue
@@ -95,8 +101,8 @@ func (c Coster) GetCosts(ctx context.Context, query infra_sdk.CostQuery) (*infra
 	return agg.result(), nil
 }
 
-// monthsInRange lists the first day of every month touched by [start, end).
-func monthsInRange(start, end time.Time) []time.Time {
+// MonthsInRange lists the first day of every month touched by [start, end).
+func MonthsInRange(start, end time.Time) []time.Time {
 	months := make([]time.Time, 0)
 	if !start.Before(end) {
 		return months
@@ -153,7 +159,7 @@ func newAggregator(query infra_sdk.CostQuery) (*aggregator, error) {
 	}
 	filters := make([]tagFilter, 0, len(query.FilterTags))
 	for _, f := range query.FilterTags {
-		filters = append(filters, tagFilter{awsKey: aws_account.UniversalTag(f.Key).ToAws(), filter: f})
+		filters = append(filters, tagFilter{awsKey: aws_names.UniversalTag(f.Key).ToAws(), filter: f})
 	}
 	return &aggregator{query: query, groupBy: groupBy, filters: filters, buckets: map[bucketKey]*bucket{}}, nil
 }
@@ -211,7 +217,7 @@ func (a *aggregator) groupKeys(row Row) infra_sdk.CostSeriesGroupKeys {
 	keys := make(infra_sdk.CostSeriesGroupKeys, 0, len(a.groupBy))
 	for _, g := range a.groupBy {
 		if g.TagKey != "" {
-			value, _ := TagValue(row.Tags, aws_account.UniversalTag(g.TagKey).ToAws())
+			value, _ := TagValue(row.Tags, aws_names.UniversalTag(g.TagKey).ToAws())
 			keys = append(keys, infra_sdk.CostSeriesGroupKey{TagKey: g.TagKey, Value: value})
 			continue
 		}
