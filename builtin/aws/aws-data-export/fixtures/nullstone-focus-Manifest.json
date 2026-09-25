@@ -1,0 +1,29 @@
+{
+  "exportName": "nullstone-focus",
+  "exportArn": "arn:aws:bcm-data-exports:us-east-1:111111111111:export/nullstone-focus-4f9c1a2b",
+  "tableName": "FOCUS_1_2_AWS",
+  "billingPeriod": {
+    "start": "2026-08-01T00:00:00.000Z",
+    "end": "2026-09-01T00:00:00.000Z"
+  },
+  "columns": [
+    { "name": "BilledCost", "type": "DOUBLE" },
+    { "name": "ChargeCategory", "type": "STRING" },
+    { "name": "ChargePeriodStart", "type": "TIMESTAMP" },
+    { "name": "ChargePeriodEnd", "type": "TIMESTAMP" },
+    { "name": "BillingCurrency", "type": "STRING" },
+    { "name": "ContractedCost", "type": "DOUBLE" },
+    { "name": "EffectiveCost", "type": "DOUBLE" },
+    { "name": "ListCost", "type": "DOUBLE" },
+    { "name": "ResourceId", "type": "STRING" },
+    { "name": "ServiceName", "type": "STRING" },
+    { "name": "SubAccountId", "type": "STRING" },
+    { "name": "Tags", "type": "MAP" },
+    { "name": "RegionId", "type": "STRING" }
+  ],
+  "dataFiles": [
+    { "key": "exports/nullstone-focus/data/BILLING_PERIOD=2026-08/nullstone-focus-00001.csv.gz" },
+    { "key": "exports/nullstone-focus/data/BILLING_PERIOD=2026-08/nullstone-focus-00002.csv.gz" }
+  ],
+  "additionalOutputFiles": []
+}
