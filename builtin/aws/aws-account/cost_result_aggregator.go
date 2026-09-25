@@ -8,6 +8,7 @@ import (
 
 	cetypes "github.com/aws/aws-sdk-go-v2/service/costexplorer/types"
 	infra_sdk "github.com/nullstone-io/infra-sdk"
+	aws_names "github.com/nullstone-io/infra-sdk/builtin/aws/aws-names"
 )
 
 func NewCostResultAggregator() *CostResultAggregator {
@@ -71,7 +72,7 @@ func (a *CostResultAggregator) parseResultGroupKeys(inputGroups infra_sdk.CostGr
 		tokens := strings.SplitN(key, "$", 2)
 		if len(tokens) == 2 {
 			result = append(result, infra_sdk.CostSeriesGroupKey{
-				TagKey: AwsTag(tokens[0]).ToUniversal(),
+				TagKey: aws_names.AwsTag(tokens[0]).ToUniversal(),
 				Value:  tokens[1],
 			})
 		} else {
@@ -81,7 +82,7 @@ func (a *CostResultAggregator) parseResultGroupKeys(inputGroups infra_sdk.CostGr
 			}
 			value := key
 			if name == infra_sdk.UniversalDimensionChargeCategory {
-				value = string(AwsRecordType(key).ToChargeCategory())
+				value = string(aws_names.AwsRecordType(key).ToChargeCategory())
 			}
 			result = append(result, infra_sdk.CostSeriesGroupKey{
 				Name:  name,

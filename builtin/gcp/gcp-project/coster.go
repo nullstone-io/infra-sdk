@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"cloud.google.com/go/bigquery"
 	infra_sdk "github.com/nullstone-io/infra-sdk"
@@ -16,6 +17,20 @@ type Coster struct {
 }
 
 func (c Coster) ProviderType() string { return "gcp" }
+
+// Capabilities describes the BigQuery billing export: any grouping in one query, every measure,
+// charge category carried; no resource grouping yet.
+func Capabilities() infra_sdk.CostCapabilities {
+	return infra_sdk.CostCapabilities{MaxGroupBy: 0, Metrics: SupportedMetrics(), HasChargeCategory: true}
+}
+
+// MonthSource is always the billing export: GCP has a single source.
+func (c Coster) MonthSource(ctx context.Context, month time.Time) (infra_sdk.CostSource, error) {
+	return infra_sdk.CostSource{Name: infra_sdk.CostSourceBillingExport, Capabilities: Capabilities()}, nil
+}
+
+// ReferenceCoster is the coster itself: the billing export is the bill.
+func (c Coster) ReferenceCoster() infra_sdk.Coster { return c }
 
 func (c Coster) GetCosts(ctx context.Context, query infra_sdk.CostQuery) (*infra_sdk.CostResult, error) {
 	ts, err := c.Accessor.GetTokenSource(ctx)
