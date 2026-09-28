@@ -95,3 +95,46 @@ func TestCostResultAggregator_AddResults_MapsMetricsAndRecordTypes(t *testing.T)
 	assert.Equal(t, infra_sdk.UniversalDimensionChargeCategory, keys[0].Name)
 	assert.Equal(t, string(infra_sdk.CostChargeCategoryTax), keys[0].Value)
 }
+
+func TestCostResultAggregator_AddResults_MatchesKeysToRequestedGroups(t *testing.T) {
+	// A tag grouped with a dimension: the dimension value ("Amazon ...") sorts before the tag key
+	// ("Block$..."), so matching keys by sorted position used to hand the service to the tag's
+	// slot and report every Amazon service under an empty dimension name.
+	agg := NewCostResultAggregator()
+	groupBy := infra_sdk.CostGroupIdentifiers{
+		{TagKey: infra_sdk.UniversalTagBlock},
+		{Dimension: infra_sdk.UniversalDimensionService},
+	}
+	metrics := map[string]cetypes.MetricValue{"NetUnblendedCost": {Amount: ptr("1"), Unit: ptr("USD")}}
+	err := agg.AddResults([]cetypes.ResultByTime{
+		{
+			TimePeriod: &cetypes.DateInterval{Start: ptr("2026-01-01"), End: ptr("2026-01-02")},
+			Groups: []cetypes.Group{
+				{Keys: []string{"Block$api", "Amazon Elastic Container Service"}, Metrics: metrics},
+				{Keys: []string{"Block$", "EC2 - Other"}, Metrics: metrics},
+				{Keys: []string{"Block$db$primary", "Amazon Relational Database Service"}, Metrics: metrics},
+			},
+		},
+	}, groupBy)
+	require.NoError(t, err)
+
+	got := map[string]infra_sdk.CostSeriesGroupKeys{}
+	for _, series := range agg.CostResult.Series {
+		require.Len(t, series.GroupKeys, 2)
+		got[series.GroupKeys[1].Value] = series.GroupKeys
+	}
+	require.Len(t, got, 3)
+
+	ecs := got["Amazon Elastic Container Service"]
+	assert.Equal(t, infra_sdk.CostSeriesGroupKey{TagKey: infra_sdk.UniversalTagBlock, Value: "api"}, ecs[0])
+	assert.Equal(t, infra_sdk.CostSeriesGroupKey{Name: infra_sdk.UniversalDimensionService, Value: "Amazon Elastic Container Service"}, ecs[1])
+
+	// untagged spend keeps its (empty) tag slot and its service
+	other := got["EC2 - Other"]
+	assert.Equal(t, infra_sdk.CostSeriesGroupKey{TagKey: infra_sdk.UniversalTagBlock, Value: ""}, other[0])
+	assert.Equal(t, infra_sdk.CostSeriesGroupKey{Name: infra_sdk.UniversalDimensionService, Value: "EC2 - Other"}, other[1])
+
+	// a "$" inside a tag value stays in the value
+	rds := got["Amazon Relational Database Service"]
+	assert.Equal(t, infra_sdk.CostSeriesGroupKey{TagKey: infra_sdk.UniversalTagBlock, Value: "db$primary"}, rds[0])
+}
