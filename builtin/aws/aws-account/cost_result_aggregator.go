@@ -2,7 +2,6 @@ package aws_account
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
@@ -64,31 +63,49 @@ func (a *CostResultAggregator) parseWindow(resultByTime cetypes.ResultByTime) (t
 	return start, end, nil
 }
 
+// parseResultGroupKeys maps a group's keys back onto the requested group definitions.
+//
+// Cost Explorer returns one key per definition, in request order: a tag key as "<tag>$<value>"
+// and a dimension as its bare value. Tags are recognised by their prefix; dimensions are matched
+// with the requested dimensions in order. The keys must not be re-sorted for this: a dimension
+// value such as "Amazon ECS" sorts before a "Block$api" tag key, and matching by sorted position
+// then hands the service value to the tag's slot, where it has no dimension name and is lost.
 func (a *CostResultAggregator) parseResultGroupKeys(inputGroups infra_sdk.CostGroupIdentifiers, keys []string) infra_sdk.CostSeriesGroupKeys {
-	sort.Strings(keys)
+	tagKeys := map[string]bool{}
+	dimensions := make([]string, 0, len(inputGroups))
+	for _, grp := range inputGroups {
+		if grp.TagKey != "" {
+			tagKeys[aws_names.UniversalTag(grp.TagKey).ToAws()] = true
+		} else if grp.Dimension != "" {
+			dimensions = append(dimensions, grp.Dimension)
+		}
+	}
 
-	result := make(infra_sdk.CostSeriesGroupKeys, 0)
-	for i, key := range keys {
+	result := make(infra_sdk.CostSeriesGroupKeys, 0, len(keys))
+	nextDimension := 0
+	for _, key := range keys {
 		tokens := strings.SplitN(key, "$", 2)
-		if len(tokens) == 2 {
+		if len(tokens) == 2 && (tagKeys[tokens[0]] || len(dimensions) == 0) {
 			result = append(result, infra_sdk.CostSeriesGroupKey{
 				TagKey: aws_names.AwsTag(tokens[0]).ToUniversal(),
 				Value:  tokens[1],
 			})
-		} else {
-			name := fmt.Sprintf("dimension-%d", i)
-			if i < len(inputGroups) {
-				name = inputGroups[i].Dimension
-			}
-			value := key
-			if name == infra_sdk.UniversalDimensionChargeCategory {
-				value = string(aws_names.AwsRecordType(key).ToChargeCategory())
-			}
-			result = append(result, infra_sdk.CostSeriesGroupKey{
-				Name:  name,
-				Value: value,
-			})
+			continue
 		}
+
+		name := fmt.Sprintf("dimension-%d", nextDimension)
+		if nextDimension < len(dimensions) {
+			name = dimensions[nextDimension]
+		}
+		nextDimension++
+		value := key
+		if name == infra_sdk.UniversalDimensionChargeCategory {
+			value = string(aws_names.AwsRecordType(key).ToChargeCategory())
+		}
+		result = append(result, infra_sdk.CostSeriesGroupKey{
+			Name:  name,
+			Value: value,
+		})
 	}
 	return result
 }
