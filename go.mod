@@ -1,6 +1,6 @@
 module github.com/nullstone-io/infra-sdk
 
-go 1.26.0
+go 1.26.5
 
 require (
 	cloud.google.com/go/bigquery v1.79.0
@@ -33,7 +33,7 @@ require (
 	golang.org/x/oauth2 v0.36.0
 	google.golang.org/api v0.288.0
 	google.golang.org/grpc v1.84.0
-	gopkg.in/nullstone-io/go-api-client.v0 v0.0.0-20260716142317-86afc1414450
+	gopkg.in/nullstone-io/go-api-client.v0 v0.0.0-20261013131729-0d25c7ea6561
 )
 
 require (
@@ -73,7 +73,7 @@ require (
 	github.com/klauspost/compress v1.19.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.4.0 // indirect
 	github.com/mitchellh/go-wordwrap v1.0.1 // indirect
-	github.com/nullstone-io/module v0.2.11 // indirect
+	github.com/nullstone-io/module v0.3.1 // indirect
 	github.com/pierrec/lz4/v4 v4.1.27 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/spf13/afero v1.15.0 // indirect
@@ -85,8 +85,6 @@ require (
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.69.0 // indirect
 	go.opentelemetry.io/otel v1.45.0 // indirect
 	go.opentelemetry.io/otel/metric v1.45.0 // indirect
-	go.opentelemetry.io/otel/sdk v1.45.0 // indirect
-	go.opentelemetry.io/otel/sdk/metric v1.45.0 // indirect
 	go.opentelemetry.io/otel/trace v1.45.0 // indirect
 	golang.org/x/crypto v0.57.0 // indirect
 	golang.org/x/exp v0.0.0-20260709172345-9ea1abe57597 // indirect
