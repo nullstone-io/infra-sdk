@@ -30,6 +30,13 @@ func (t UniversalTag) ToGcp() string {
 	return string(t)
 }
 
+// GcpResourceColumn is the expression that identifies the billed resource in the resource-level
+// billing export (gcp_billing_export_resource_v1_*, the only table the integration accepts).
+// resource.global_name is the full resource name (//compute.googleapis.com/projects/.../instances/x)
+// and plays the FOCUS ResourceId role; some services only populate the short resource.name, and
+// rows with no resource at all (fees, some network SKUs) leave both NULL, which groups as "".
+const GcpResourceColumn = "IFNULL(resource.global_name, resource.name)"
+
 type UniversalDimension string
 
 func (d UniversalDimension) ToGcpColumn() string {
@@ -40,6 +47,8 @@ func (d UniversalDimension) ToGcpColumn() string {
 		return "service.description"
 	case infra_sdk.UniversalDimensionChargeCategory:
 		return "cost_type"
+	case infra_sdk.UniversalDimensionResource:
+		return GcpResourceColumn
 	}
 	return string(d)
 }
@@ -54,6 +63,8 @@ func (d GcpDimension) ToUniversal() string {
 		return infra_sdk.UniversalDimensionService
 	case "cost_type":
 		return infra_sdk.UniversalDimensionChargeCategory
+	case GcpResourceColumn:
+		return infra_sdk.UniversalDimensionResource
 	}
 	return string(d)
 }

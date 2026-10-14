@@ -1,6 +1,7 @@
 package gcp_project
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -254,4 +255,22 @@ func TestQueryBuilder_Build_WithGroupByChargeCategory(t *testing.T) {
 
 	assert.Contains(t, result.SQL, "cost_type AS dim_0")
 	assert.Contains(t, result.SQL, "GROUP BY period_start, period_end, dim_0, currency")
+}
+
+func TestQueryBuilder_Build_WithGroupByResource(t *testing.T) {
+	builder := &QueryBuilder{Table: "ds.table"}
+	result := builder.Build(infra_sdk.CostQuery{
+		Start:       time.Now(),
+		End:         time.Now(),
+		Granularity: infra_sdk.CostGranularityDaily,
+		GroupBy: infra_sdk.CostGroupIdentifiers{
+			{Dimension: infra_sdk.UniversalDimensionService},
+			{Dimension: infra_sdk.UniversalDimensionResource},
+		},
+	})
+
+	// the resource is grouped through its alias, so the IFNULL expression appears once in SELECT
+	assert.Contains(t, result.SQL, "IFNULL(resource.global_name, resource.name) AS dim_1")
+	assert.Contains(t, result.SQL, "GROUP BY period_start, period_end, dim_0, dim_1, currency")
+	assert.Equal(t, 1, strings.Count(result.SQL, "resource.global_name"))
 }
