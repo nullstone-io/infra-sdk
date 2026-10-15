@@ -158,3 +158,39 @@ func TestCostResultAggregator_AddRow_MultipleRows(t *testing.T) {
 	// Two env values x four measures
 	assert.Len(t, agg.CostResult.Series, 8)
 }
+
+func TestCostResultAggregator_AddRow_ResourceGroupBy(t *testing.T) {
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
+	groupBy := infra_sdk.CostGroupIdentifiers{
+		{Dimension: infra_sdk.UniversalDimensionResource},
+	}
+
+	t.Run("full resource name is the key value", func(t *testing.T) {
+		agg := NewCostResultAggregator()
+		row := metricRow(start, end, map[string]bigquery.Value{
+			"dim_0": "//compute.googleapis.com/projects/p/zones/us-central1-a/instances/api-1",
+		})
+		require.NoError(t, agg.AddRow(row, groupBy))
+
+		require.NotEmpty(t, agg.CostResult.Series)
+		for _, series := range agg.CostResult.Series {
+			require.Len(t, series.GroupKeys, 1)
+			assert.Equal(t, infra_sdk.UniversalDimensionResource, series.GroupKeys[0].Name)
+			assert.Equal(t, "//compute.googleapis.com/projects/p/zones/us-central1-a/instances/api-1", series.GroupKeys[0].Value)
+		}
+	})
+
+	t.Run("rows without a resource group under an empty id", func(t *testing.T) {
+		agg := NewCostResultAggregator()
+		row := metricRow(start, end, map[string]bigquery.Value{"dim_0": nil})
+		require.NoError(t, agg.AddRow(row, groupBy))
+
+		require.NotEmpty(t, agg.CostResult.Series)
+		for _, series := range agg.CostResult.Series {
+			require.Len(t, series.GroupKeys, 1)
+			assert.Equal(t, infra_sdk.UniversalDimensionResource, series.GroupKeys[0].Name)
+			assert.Equal(t, "", series.GroupKeys[0].Value)
+		}
+	})
+}

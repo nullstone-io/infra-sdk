@@ -18,10 +18,10 @@ type Coster struct {
 
 func (c Coster) ProviderType() string { return "gcp" }
 
-// Capabilities describes the BigQuery billing export: any grouping in one query, every measure,
-// charge category carried; no resource grouping yet.
+// Capabilities describes the resource-level BigQuery billing export: any grouping in one query,
+// every measure, charge category carried, and the billed resource (see GcpResourceColumn).
 func Capabilities() infra_sdk.CostCapabilities {
-	return infra_sdk.CostCapabilities{MaxGroupBy: 0, Metrics: SupportedMetrics(), HasChargeCategory: true}
+	return infra_sdk.CostCapabilities{MaxGroupBy: 0, Metrics: SupportedMetrics(), HasChargeCategory: true, HasResource: true}
 }
 
 // MonthSource is always the billing export: GCP has a single source.
