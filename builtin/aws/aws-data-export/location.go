@@ -14,6 +14,10 @@ import (
 //
 // so a Location is the bucket plus everything up to and including the export name. Users
 // configure it as a single URI, s3://<bucket>/<prefix>/<export-name>.
+//
+// AWS documents the partition directory as BILLING_PERIOD=YYYY-MM but delivers FOCUS 1.2 exports
+// under billing_period=YYYY-MM. S3 keys are case-sensitive, so every lookup by month tries both
+// spellings (PartitionNames); nothing in this package builds a key from Partition alone.
 type Location struct {
 	Bucket string
 	// Prefix is "<prefix>/<export-name>" with no leading or trailing slash.
@@ -45,9 +49,17 @@ func (l Location) ExportName() string {
 	return l.Prefix
 }
 
-// Partition names the billing-period partition directory for a month.
+// Partition names the billing-period partition directory for a month as AWS documents it. It is
+// for messages; S3 lookups go through PartitionNames because deliveries use either spelling.
 func Partition(month time.Time) string {
-	return "BILLING_PERIOD=" + month.UTC().Format("2006-01")
+	return PartitionNames(month)[0]
+}
+
+// PartitionNames lists the spellings a month's partition directory is delivered under, the
+// documented one first.
+func PartitionNames(month time.Time) []string {
+	ym := month.UTC().Format("2006-01")
+	return []string{"BILLING_PERIOD=" + ym, "billing_period=" + ym}
 }
 
 // MetadataPrefix is the key prefix under which every month's manifest lives.
@@ -55,12 +67,34 @@ func (l Location) MetadataPrefix() string {
 	return l.Prefix + "/metadata/"
 }
 
-// ManifestKey is the object key of a month's manifest (overwrite delivery mode).
+// ManifestKey is the object key of a month's manifest (overwrite delivery mode) under the
+// documented partition spelling. Lookups use ManifestKeys.
 func (l Location) ManifestKey(month time.Time) string {
-	return fmt.Sprintf("%s/metadata/%s/%s-Manifest.json", l.Prefix, Partition(month), l.ExportName())
+	return l.ManifestKeys(month)[0]
 }
 
-// DataPrefix is the key prefix of a month's data files (overwrite delivery mode).
+// ManifestKeys lists the object keys a month's manifest can be delivered at, one per partition
+// spelling, documented spelling first.
+func (l Location) ManifestKeys(month time.Time) []string {
+	keys := make([]string, 0, 2)
+	for _, partition := range PartitionNames(month) {
+		keys = append(keys, fmt.Sprintf("%s/metadata/%s/%s-Manifest.json", l.Prefix, partition, l.ExportName()))
+	}
+	return keys
+}
+
+// DataPrefix is the key prefix of a month's data files (overwrite delivery mode) under the
+// documented partition spelling. Listings use DataPrefixes.
 func (l Location) DataPrefix(month time.Time) string {
-	return fmt.Sprintf("%s/data/%s/", l.Prefix, Partition(month))
+	return l.DataPrefixes(month)[0]
+}
+
+// DataPrefixes lists the key prefixes a month's data files can be delivered under, one per
+// partition spelling, documented spelling first.
+func (l Location) DataPrefixes(month time.Time) []string {
+	prefixes := make([]string, 0, 2)
+	for _, partition := range PartitionNames(month) {
+		prefixes = append(prefixes, fmt.Sprintf("%s/data/%s/", l.Prefix, partition))
+	}
+	return prefixes
 }

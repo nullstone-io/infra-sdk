@@ -104,13 +104,9 @@ func (k *rawDataKey) UnmarshalJSON(b []byte) error {
 // ReadManifest fetches and parses a month's manifest. ErrNoManifest when the month has none.
 // When the manifest lists no data files, the month's data partition is listed instead.
 func ReadManifest(ctx context.Context, api S3API, loc Location, month time.Time) (*Manifest, error) {
-	key := loc.ManifestKey(month)
-	out, err := api.GetObject(ctx, &s3.GetObjectInput{Bucket: ptr(loc.Bucket), Key: ptr(key)})
+	key, out, err := getManifest(ctx, api, loc, month)
 	if err != nil {
-		if isNotFound(err) {
-			return nil, ErrNoManifest
-		}
-		return nil, fmt.Errorf("error reading manifest s3://%s/%s: %w", loc.Bucket, key, err)
+		return nil, err
 	}
 	defer out.Body.Close()
 	raw, err := io.ReadAll(out.Body)
@@ -165,18 +161,46 @@ func normalizeKey(bucket, key string) string {
 	return strings.TrimPrefix(key, "/")
 }
 
+// getManifest fetches a month's manifest from the first partition spelling that has one,
+// returning the key it was found at. ErrNoManifest when none does.
+func getManifest(ctx context.Context, api S3API, loc Location, month time.Time) (string, *s3.GetObjectOutput, error) {
+	for _, key := range loc.ManifestKeys(month) {
+		out, err := api.GetObject(ctx, &s3.GetObjectInput{Bucket: ptr(loc.Bucket), Key: ptr(key)})
+		if err == nil {
+			return key, out, nil
+		}
+		if !isNotFound(err) {
+			return "", nil, fmt.Errorf("error reading manifest s3://%s/%s: %w", loc.Bucket, key, err)
+		}
+	}
+	return "", nil, ErrNoManifest
+}
+
+// listDataFiles lists a month's data chunks from the first partition spelling that has any.
 func listDataFiles(ctx context.Context, api S3API, loc Location, month time.Time) ([]string, error) {
-	prefix := loc.DataPrefix(month)
+	for _, prefix := range loc.DataPrefixes(month) {
+		keys, err := listDataFilesUnder(ctx, api, loc.Bucket, prefix)
+		if err != nil {
+			return nil, err
+		}
+		if len(keys) > 0 {
+			return keys, nil
+		}
+	}
+	return []string{}, nil
+}
+
+func listDataFilesUnder(ctx context.Context, api S3API, bucket, prefix string) ([]string, error) {
 	keys := make([]string, 0)
 	var token *string
 	for {
 		out, err := api.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
-			Bucket:            ptr(loc.Bucket),
+			Bucket:            ptr(bucket),
 			Prefix:            ptr(prefix),
 			ContinuationToken: token,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("error listing data files s3://%s/%s: %w", loc.Bucket, prefix, err)
+			return nil, fmt.Errorf("error listing data files s3://%s/%s: %w", bucket, prefix, err)
 		}
 		for _, obj := range out.Contents {
 			key := unptr(obj.Key)
@@ -193,20 +217,23 @@ func listDataFiles(ctx context.Context, api S3API, loc Location, month time.Time
 	return keys, nil
 }
 
-// HasMonth reports whether a billing month has a manifest, and its ETag when it does.
+// HasMonth reports whether a billing month has a manifest under either partition spelling, and
+// its ETag when it does.
 func HasMonth(ctx context.Context, api S3API, loc Location, month time.Time) (string, bool, error) {
-	key := loc.ManifestKey(month)
-	out, err := api.HeadObject(ctx, &s3.HeadObjectInput{Bucket: ptr(loc.Bucket), Key: ptr(key)})
-	if err != nil {
-		if isNotFound(err) {
-			return "", false, nil
+	for _, key := range loc.ManifestKeys(month) {
+		out, err := api.HeadObject(ctx, &s3.HeadObjectInput{Bucket: ptr(loc.Bucket), Key: ptr(key)})
+		if err == nil {
+			return unptr(out.ETag), true, nil
 		}
-		return "", false, fmt.Errorf("error checking manifest s3://%s/%s: %w", loc.Bucket, key, err)
+		if !isNotFound(err) {
+			return "", false, fmt.Errorf("error checking manifest s3://%s/%s: %w", loc.Bucket, key, err)
+		}
 	}
-	return unptr(out.ETag), true, nil
+	return "", false, nil
 }
 
-var manifestKeyPattern = regexp.MustCompile(`/metadata/BILLING_PERIOD=(\d{4}-\d{2})/[^/]+-Manifest\.json$`)
+// manifestKeyPattern matches an overwrite-mode partition manifest under either partition spelling.
+var manifestKeyPattern = regexp.MustCompile(`(?i)/metadata/billing_period=(\d{4}-\d{2})/[^/]+-Manifest\.json$`)
 
 // ListMonths lists the billing months that have a manifest, oldest first.
 func ListMonths(ctx context.Context, api S3API, loc Location) ([]time.Time, error) {

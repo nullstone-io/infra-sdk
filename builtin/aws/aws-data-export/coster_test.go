@@ -224,6 +224,32 @@ func TestCoster_GetCosts(t *testing.T) {
 	})
 }
 
+// AWS delivers FOCUS 1.2 exports under billing_period= (lower case) with absolute s3:// file
+// URIs; a bucket in that shape must read exactly like the documented one.
+func TestCoster_GetCosts_LowerCasePartition(t *testing.T) {
+	ctx := context.Background()
+	f := newFakeS3()
+	dataKey := testLocation.DataPrefixes(aug2026)[1] + "nullstone-focus-00001.csv.gz"
+	f.put(testLocation.ManifestKeys(aug2026)[1], []byte(`{"dataFiles":["s3://ns-billing/`+dataKey+`"]}`))
+	f.put(dataKey, gzipBytes(t, fixture(t, "nullstone-focus-2026-08.csv")))
+	lower := Coster{Location: testLocation, Client: f}
+
+	_, ok, err := lower.HasMonth(ctx, aug2026)
+	require.NoError(t, err)
+	assert.True(t, ok)
+
+	query := infra_sdk.CostQuery{
+		Start: aug2026, End: sep2026, Granularity: infra_sdk.CostGranularityDaily,
+		GroupBy: infra_sdk.CostGroupIdentifiers{groupByAccount, groupByService, groupByResource},
+	}
+	got, err := lower.GetCosts(ctx, query)
+	require.NoError(t, err)
+	want, err := testCoster(t).GetCosts(ctx, query)
+	require.NoError(t, err)
+	assert.Equal(t, want, got)
+	assert.NotEmpty(t, got.Series)
+}
+
 func TestCoster_HasMonth(t *testing.T) {
 	ctx := context.Background()
 	coster := testCoster(t)
