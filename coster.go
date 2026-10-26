@@ -2,7 +2,10 @@ package infra_sdk
 
 import (
 	"context"
+	"fmt"
 	"slices"
+	"sort"
+	"strconv"
 	"time"
 )
 
@@ -324,4 +327,94 @@ type CostSeriesDatapoint struct {
 	End   time.Time `json:"end"`
 	Unit  string    `json:"unit"`
 	Value string    `json:"value"`
+}
+
+// CostRow is one aggregated row of a cost query: the measures a source reports for one set of
+// group-key values over one period in one currency. It is the row shape of CostScanner; the
+// same information in a CostResult is spread over one series per metric.
+type CostRow struct {
+	GroupKeys CostSeriesGroupKeys
+	Start     time.Time
+	End       time.Time
+	Currency  string
+	// Values holds the measures the source reported for this row. A metric the source cannot
+	// produce is absent, never 0.
+	Values map[CostMetric]float64
+}
+
+// CostScanner streams a query's result one row at a time instead of materialising a
+// CostResult. A coster offers it when its rows are cheaper to hand over than series: a Data
+// Export month at resource grain is tens of thousands of rows, and a consumer landing them in
+// a store never needs them all at once. Rows arrive grouped by group keys with periods in order
+// within a group; a row is only valid until fn returns. Consumers type-assert for it and fall
+// back to GetCosts with CostResult.EachRow.
+type CostScanner interface {
+	ScanCosts(ctx context.Context, query CostQuery, fn func(CostRow) error) error
+}
+
+// EachRow regroups the result's series into rows (one per group keys, period and currency, with
+// every metric reported for it) and calls fn once per row. Rows are emitted grouped by series
+// group keys, periods in order within a group. It is how a consumer that wants rows reads a coster
+// that only offers GetCosts.
+func (r *CostResult) EachRow(fn func(CostRow) error) error {
+	if r == nil {
+		return nil
+	}
+	type rowKey struct {
+		start    time.Time
+		end      time.Time
+		currency string
+	}
+	type groupRows struct {
+		keys CostSeriesGroupKeys
+		rows map[rowKey]*CostRow
+	}
+	groups := map[string]*groupRows{}
+	order := make([]string, 0)
+	for _, series := range r.Series {
+		id := series.GroupKeys.UniqueIdentifier()
+		g, ok := groups[id]
+		if !ok {
+			g = &groupRows{keys: series.GroupKeys, rows: map[rowKey]*CostRow{}}
+			groups[id] = g
+			order = append(order, id)
+		}
+		for _, point := range series.Points {
+			val, err := strconv.ParseFloat(point.Value, 64)
+			if err != nil {
+				return fmt.Errorf("invalid cost value %q: %w", point.Value, err)
+			}
+			key := rowKey{start: point.Start, end: point.End, currency: point.Unit}
+			row, ok := g.rows[key]
+			if !ok {
+				row = &CostRow{GroupKeys: series.GroupKeys, Start: point.Start, End: point.End, Currency: point.Unit, Values: map[CostMetric]float64{}}
+				g.rows[key] = row
+			}
+			// the same metric can appear twice for one period when a result was merged; sum
+			row.Values[series.MetricName] += val
+		}
+	}
+	sort.Strings(order)
+	for _, id := range order {
+		g := groups[id]
+		rows := make([]*CostRow, 0, len(g.rows))
+		for _, row := range g.rows {
+			rows = append(rows, row)
+		}
+		sort.Slice(rows, func(i, j int) bool {
+			if !rows[i].Start.Equal(rows[j].Start) {
+				return rows[i].Start.Before(rows[j].Start)
+			}
+			if !rows[i].End.Equal(rows[j].End) {
+				return rows[i].End.Before(rows[j].End)
+			}
+			return rows[i].Currency < rows[j].Currency
+		})
+		for _, row := range rows {
+			if err := fn(*row); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

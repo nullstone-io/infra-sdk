@@ -72,6 +72,27 @@ func (c Coster) HasMonth(ctx context.Context, month time.Time) (string, bool, er
 }
 
 func (c Coster) GetCosts(ctx context.Context, query infra_sdk.CostQuery) (*infra_sdk.CostResult, error) {
+	agg, err := c.aggregate(ctx, query)
+	if err != nil || agg == nil {
+		return nil, err
+	}
+	return agg.result(), nil
+}
+
+// ScanCosts answers the query as rows: every group's buckets in period order, each with all four
+// FOCUS measures. It reads the export exactly as GetCosts does but hands the buckets over one at
+// a time instead of shaping them into series, so a consumer's memory stays at the aggregator's.
+func (c Coster) ScanCosts(ctx context.Context, query infra_sdk.CostQuery, fn func(infra_sdk.CostRow) error) error {
+	agg, err := c.aggregate(ctx, query)
+	if err != nil || agg == nil {
+		return err
+	}
+	return agg.each(fn)
+}
+
+// aggregate reads every delivered month in the query window into an aggregator. Nil when the
+// accessor has no credentials (no client).
+func (c Coster) aggregate(ctx context.Context, query infra_sdk.CostQuery) (*aggregator, error) {
 	if query.Granularity == infra_sdk.CostGranularityHourly {
 		return nil, fmt.Errorf("data exports are delivered daily; hourly granularity is not supported")
 	}
@@ -98,7 +119,7 @@ func (c Coster) GetCosts(ctx context.Context, query infra_sdk.CostQuery) (*infra
 			return nil, err
 		}
 	}
-	return agg.result(), nil
+	return agg, nil
 }
 
 // MonthsInRange lists the first day of every month touched by [start, end).
@@ -305,6 +326,39 @@ func (a *aggregator) retainKeys(scratch infra_sdk.CostSeriesGroupKeys) infra_sdk
 	return keys
 }
 
+// ordered returns the group's buckets in period order (then currency).
+func (g *group) ordered() []*bucket {
+	ordered := make([]*bucket, 0, len(g.buckets))
+	for _, b := range g.buckets {
+		ordered = append(ordered, b)
+	}
+	sort.Slice(ordered, func(i, j int) bool {
+		if !ordered[i].start.Equal(ordered[j].start) {
+			return ordered[i].start.Before(ordered[j].start)
+		}
+		return ordered[i].currency < ordered[j].currency
+	})
+	return ordered
+}
+
+// each hands every bucket to fn as a row, group by group, periods in order. Values are rounded
+// the way result() formats them, so both shapes of the same month read identically.
+func (a *aggregator) each(fn func(infra_sdk.CostRow) error) error {
+	metrics := infra_sdk.AllCostMetrics()
+	for _, g := range a.groups {
+		for _, b := range g.ordered() {
+			row := infra_sdk.CostRow{GroupKeys: g.keys, Start: b.start, End: b.end, Currency: b.currency, Values: make(map[infra_sdk.CostMetric]float64, len(metrics))}
+			for _, metric := range metrics {
+				row.Values[metric] = roundCost(b.sums.get(metric))
+			}
+			if err := fn(row); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 // result shapes the groups as a CostResult: one series per (group, metric) with its points in
 // period order. Series are assembled whole (AddSeries), so a group identifier is encoded once per
 // series rather than once per datapoint.
@@ -312,16 +366,7 @@ func (a *aggregator) result() *infra_sdk.CostResult {
 	metrics := infra_sdk.AllCostMetrics()
 	result := infra_sdk.NewCostResult()
 	for _, g := range a.groups {
-		ordered := make([]*bucket, 0, len(g.buckets))
-		for _, b := range g.buckets {
-			ordered = append(ordered, b)
-		}
-		sort.Slice(ordered, func(i, j int) bool {
-			if !ordered[i].start.Equal(ordered[j].start) {
-				return ordered[i].start.Before(ordered[j].start)
-			}
-			return ordered[i].currency < ordered[j].currency
-		})
+		ordered := g.ordered()
 		for _, metric := range metrics {
 			points := make([]infra_sdk.CostSeriesDatapoint, 0, len(ordered))
 			for _, b := range ordered {
@@ -338,8 +383,12 @@ func (a *aggregator) result() *infra_sdk.CostResult {
 	return result
 }
 
-// formatCost renders a summed cost with float noise trimmed (FOCUS costs carry at most ten
-// decimals), so "0.1 + 0.2" reads 0.3.
+// roundCost trims float noise from a summed cost (FOCUS costs carry at most ten decimals), so
+// "0.1 + 0.2" reads 0.3.
+func roundCost(v float64) float64 {
+	return math.Round(v*1e10) / 1e10
+}
+
 func formatCost(v float64) string {
-	return strconv.FormatFloat(math.Round(v*1e10)/1e10, 'f', -1, 64)
+	return strconv.FormatFloat(roundCost(v), 'f', -1, 64)
 }
