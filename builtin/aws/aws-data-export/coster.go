@@ -71,41 +71,48 @@ func (c Coster) HasMonth(ctx context.Context, month time.Time) (string, bool, er
 	return HasMonth(ctx, api, c.Location, month)
 }
 
+// GetCosts sums the export in memory into series. Memory scales with the number of distinct
+// (group, period, currency) buckets in the window; a consumer that can sum elsewhere (a database)
+// should ScanCosts instead.
 func (c Coster) GetCosts(ctx context.Context, query infra_sdk.CostQuery) (*infra_sdk.CostResult, error) {
-	agg, err := c.aggregate(ctx, query)
-	if err != nil || agg == nil {
+	agg, err := newAggregator(query)
+	if err != nil {
+		return nil, err
+	}
+	ok, err := c.read(ctx, query, agg.add)
+	if err != nil || !ok {
 		return nil, err
 	}
 	return agg.result(), nil
 }
 
-// ScanCosts answers the query as rows: every group's buckets in period order, each with all four
-// FOCUS measures. It reads the export exactly as GetCosts does but hands the buckets over one at
-// a time instead of shaping them into series, so a consumer's memory stays at the aggregator's.
+// ScanCosts streams the export's line items as rows without summing them: one CostRow per
+// export row that passes the query's filters, projected onto the query's group keys and period,
+// carrying that row's four FOCUS measures. The same (group keys, period, currency) therefore
+// arrives once per charge; the consumer sums. Nothing is held beyond the row being read, so
+// memory does not grow with the month. The row, its GroupKeys and its Values are reused and only
+// valid until fn returns.
 func (c Coster) ScanCosts(ctx context.Context, query infra_sdk.CostQuery, fn func(infra_sdk.CostRow) error) error {
-	agg, err := c.aggregate(ctx, query)
-	if err != nil || agg == nil {
+	p, err := newAggregator(query)
+	if err != nil {
 		return err
 	}
-	return agg.each(fn)
+	_, err = c.read(ctx, query, func(row Row) error { return p.emit(row, fn) })
+	return err
 }
 
-// aggregate reads every delivered month in the query window into an aggregator. Nil when the
-// accessor has no credentials (no client).
-func (c Coster) aggregate(ctx context.Context, query infra_sdk.CostQuery) (*aggregator, error) {
+// read streams every delivered month in the query window through add. False when the accessor
+// has no credentials (no client), which answers the query with nothing.
+func (c Coster) read(ctx context.Context, query infra_sdk.CostQuery, add func(Row) error) (bool, error) {
 	if query.Granularity == infra_sdk.CostGranularityHourly {
-		return nil, fmt.Errorf("data exports are delivered daily; hourly granularity is not supported")
+		return false, fmt.Errorf("data exports are delivered daily; hourly granularity is not supported")
 	}
 	api, err := c.client()
 	if err != nil {
-		return nil, err
+		return false, err
 	}
 	if api == nil {
-		return nil, nil
-	}
-	agg, err := newAggregator(query)
-	if err != nil {
-		return nil, err
+		return false, nil
 	}
 	for _, month := range MonthsInRange(query.Start, query.End) {
 		manifest, err := ReadManifest(ctx, api, c.Location, month)
@@ -113,13 +120,13 @@ func (c Coster) aggregate(ctx context.Context, query infra_sdk.CostQuery) (*aggr
 			continue
 		}
 		if err != nil {
-			return nil, err
+			return false, err
 		}
-		if err := ReadRows(ctx, api, c.Location.Bucket, manifest.DataFiles, agg.add); err != nil {
-			return nil, err
+		if err := ReadRows(ctx, api, c.Location.Bucket, manifest.DataFiles, add); err != nil {
+			return false, err
 		}
 	}
-	return agg, nil
+	return true, nil
 }
 
 // MonthsInRange lists the first day of every month touched by [start, end).
@@ -149,9 +156,11 @@ type aggregator struct {
 	// tagValues dedupes the tag values copied into group keys, so a stack name that appears on
 	// every row is held once rather than once per group.
 	tagValues interner
-	// keyScratch and idScratch are reused per row to build the group identifier without allocating.
+	// keyScratch and idScratch are reused per row to build the group identifier without allocating;
+	// values is the reused measure map of an emitted row.
 	keyScratch infra_sdk.CostSeriesGroupKeys
 	idScratch  []byte
+	values     map[infra_sdk.CostMetric]float64
 }
 
 type tagFilter struct {
@@ -229,17 +238,40 @@ func newAggregator(query infra_sdk.CostQuery) (*aggregator, error) {
 		groups:     map[string]*group{},
 		tagValues:  newInterner(),
 		keyScratch: make(infra_sdk.CostSeriesGroupKeys, 0, len(groupBy)),
+		values:     make(map[infra_sdk.CostMetric]float64, 4),
 	}, nil
 }
 
-func (a *aggregator) add(row Row) error {
+// accepts applies the query window and tag filters to a row.
+func (a *aggregator) accepts(row Row) bool {
 	if row.ChargePeriodStart.Before(a.query.Start) || !row.ChargePeriodStart.Before(a.query.End) {
-		return nil
+		return false
 	}
 	for _, f := range a.filters {
 		if !f.matches(row.Tags) {
-			return nil
+			return false
 		}
+	}
+	return true
+}
+
+// emit hands one accepted row to fn projected onto the query's group keys and period, without
+// bucketing it. The CostRow reuses the aggregator's scratch keys and values.
+func (a *aggregator) emit(row Row, fn func(infra_sdk.CostRow) error) error {
+	if !a.accepts(row) {
+		return nil
+	}
+	start, end := a.period(row.ChargePeriodStart)
+	a.values[infra_sdk.CostMetricListCost] = row.ListCost
+	a.values[infra_sdk.CostMetricContractedCost] = row.ContractedCost
+	a.values[infra_sdk.CostMetricEffectiveCost] = row.EffectiveCost
+	a.values[infra_sdk.CostMetricBilledCost] = row.BilledCost
+	return fn(infra_sdk.CostRow{GroupKeys: a.groupKeys(row), Start: start, End: end, Currency: row.BillingCurrency, Values: a.values})
+}
+
+func (a *aggregator) add(row Row) error {
+	if !a.accepts(row) {
+		return nil
 	}
 
 	keys := a.groupKeys(row)
@@ -339,24 +371,6 @@ func (g *group) ordered() []*bucket {
 		return ordered[i].currency < ordered[j].currency
 	})
 	return ordered
-}
-
-// each hands every bucket to fn as a row, group by group, periods in order. Values are rounded
-// the way result() formats them, so both shapes of the same month read identically.
-func (a *aggregator) each(fn func(infra_sdk.CostRow) error) error {
-	metrics := infra_sdk.AllCostMetrics()
-	for _, g := range a.groups {
-		for _, b := range g.ordered() {
-			row := infra_sdk.CostRow{GroupKeys: g.keys, Start: b.start, End: b.end, Currency: b.currency, Values: make(map[infra_sdk.CostMetric]float64, len(metrics))}
-			for _, metric := range metrics {
-				row.Values[metric] = roundCost(b.sums.get(metric))
-			}
-			if err := fn(row); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
 }
 
 // result shapes the groups as a CostResult: one series per (group, metric) with its points in

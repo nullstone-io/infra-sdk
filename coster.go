@@ -345,9 +345,13 @@ type CostRow struct {
 // CostScanner streams a query's result one row at a time instead of materialising a
 // CostResult. A coster offers it when its rows are cheaper to hand over than series: a Data
 // Export month at resource grain is tens of thousands of rows, and a consumer landing them in
-// a store never needs them all at once. Rows arrive grouped by group keys with periods in order
-// within a group; a row is only valid until fn returns. Consumers type-assert for it and fall
-// back to GetCosts with CostResult.EachRow.
+// a store never needs them all at once.
+//
+// Rows are not promised to be summed: a source that reads line items hands each one over as it
+// is, so the same (group keys, period, currency) may arrive many times and the consumer sums
+// them (a database GROUP BY). A source that already aggregates sends each once. Order is
+// unspecified, and a row is only valid until fn returns: it may be reused for the next.
+// Consumers type-assert for the scanner and fall back to GetCosts with CostResult.EachRow.
 type CostScanner interface {
 	ScanCosts(ctx context.Context, query CostQuery, fn func(CostRow) error) error
 }
