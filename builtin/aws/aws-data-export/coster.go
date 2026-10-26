@@ -116,13 +116,21 @@ func MonthsInRange(start, end time.Time) []time.Time {
 	return months
 }
 
-// aggregator folds rows into series buckets keyed by group values, period and currency.
-// Memory scales with the number of distinct buckets, never with the number of rows.
+// aggregator folds rows into buckets: one group (the distinct group-key values) holds one bucket
+// per period and currency with the four summed measures. Memory scales with the number of
+// distinct buckets, never with the number of rows, and a row that lands in an existing group
+// allocates nothing: its group identifier is encoded into a scratch buffer and looked up as is.
 type aggregator struct {
 	query   infra_sdk.CostQuery
 	groupBy infra_sdk.CostGroupIdentifiers
 	filters []tagFilter
-	buckets map[bucketKey]*bucket
+	groups  map[string]*group
+	// tagValues dedupes the tag values copied into group keys, so a stack name that appears on
+	// every row is held once rather than once per group.
+	tagValues interner
+	// keyScratch and idScratch are reused per row to build the group identifier without allocating.
+	keyScratch infra_sdk.CostSeriesGroupKeys
+	idScratch  []byte
 }
 
 type tagFilter struct {
@@ -130,18 +138,50 @@ type tagFilter struct {
 	filter infra_sdk.CostFilterTag
 }
 
-type bucketKey struct {
-	groups   string
+// group is one distinct set of group-key values: a series per metric in the result.
+type group struct {
+	// id is the encoded group keys (CostSeriesGroupKeys.UniqueIdentifier).
+	id      string
+	keys    infra_sdk.CostSeriesGroupKeys
+	buckets map[periodKey]*bucket
+}
+
+type periodKey struct {
 	start    time.Time
 	currency string
 }
 
 type bucket struct {
-	keys     infra_sdk.CostSeriesGroupKeys
 	start    time.Time
 	end      time.Time
 	currency string
-	sums     map[infra_sdk.CostMetric]float64
+	sums     costSums
+}
+
+// costSums holds the four FOCUS measures of a bucket without a per-bucket map.
+type costSums struct {
+	list, contracted, effective, billed float64
+}
+
+func (s *costSums) add(row Row) {
+	s.list += row.ListCost
+	s.contracted += row.ContractedCost
+	s.effective += row.EffectiveCost
+	s.billed += row.BilledCost
+}
+
+func (s costSums) get(metric infra_sdk.CostMetric) float64 {
+	switch metric {
+	case infra_sdk.CostMetricListCost:
+		return s.list
+	case infra_sdk.CostMetricContractedCost:
+		return s.contracted
+	case infra_sdk.CostMetricEffectiveCost:
+		return s.effective
+	case infra_sdk.CostMetricBilledCost:
+		return s.billed
+	}
+	return 0
 }
 
 func newAggregator(query infra_sdk.CostQuery) (*aggregator, error) {
@@ -161,7 +201,14 @@ func newAggregator(query infra_sdk.CostQuery) (*aggregator, error) {
 	for _, f := range query.FilterTags {
 		filters = append(filters, tagFilter{awsKey: aws_names.UniversalTag(f.Key).ToAws(), filter: f})
 	}
-	return &aggregator{query: query, groupBy: groupBy, filters: filters, buckets: map[bucketKey]*bucket{}}, nil
+	return &aggregator{
+		query:      query,
+		groupBy:    groupBy,
+		filters:    filters,
+		groups:     map[string]*group{},
+		tagValues:  newInterner(),
+		keyScratch: make(infra_sdk.CostSeriesGroupKeys, 0, len(groupBy)),
+	}, nil
 }
 
 func (a *aggregator) add(row Row) error {
@@ -174,18 +221,23 @@ func (a *aggregator) add(row Row) error {
 		}
 	}
 
-	start, end := a.period(row.ChargePeriodStart)
 	keys := a.groupKeys(row)
-	key := bucketKey{groups: keys.UniqueIdentifier(), start: start, currency: row.BillingCurrency}
-	b, ok := a.buckets[key]
+	a.idScratch = keys.AppendIdentifier(a.idScratch[:0])
+	g, ok := a.groups[string(a.idScratch)]
 	if !ok {
-		b = &bucket{keys: keys, start: start, end: end, currency: row.BillingCurrency, sums: map[infra_sdk.CostMetric]float64{}}
-		a.buckets[key] = b
+		g = &group{keys: a.retainKeys(keys), buckets: map[periodKey]*bucket{}}
+		g.id = g.keys.UniqueIdentifier()
+		a.groups[g.id] = g
 	}
-	b.sums[infra_sdk.CostMetricListCost] += row.ListCost
-	b.sums[infra_sdk.CostMetricContractedCost] += row.ContractedCost
-	b.sums[infra_sdk.CostMetricEffectiveCost] += row.EffectiveCost
-	b.sums[infra_sdk.CostMetricBilledCost] += row.BilledCost
+
+	start, end := a.period(row.ChargePeriodStart)
+	pk := periodKey{start: start, currency: row.BillingCurrency}
+	b, ok := g.buckets[pk]
+	if !ok {
+		b = &bucket{start: start, end: end, currency: row.BillingCurrency}
+		g.buckets[pk] = b
+	}
+	b.sums.add(row)
 	return nil
 }
 
@@ -213,8 +265,10 @@ func (a *aggregator) period(t time.Time) (time.Time, time.Time) {
 	return start, start.AddDate(0, 0, 1)
 }
 
+// groupKeys builds the row's group keys into the reusable scratch slice. The result is only
+// valid until the next call; retainKeys copies it for a new group.
 func (a *aggregator) groupKeys(row Row) infra_sdk.CostSeriesGroupKeys {
-	keys := make(infra_sdk.CostSeriesGroupKeys, 0, len(a.groupBy))
+	keys := a.keyScratch[:0]
 	for _, g := range a.groupBy {
 		if g.TagKey != "" {
 			value, _ := TagValue(row.Tags, aws_names.UniversalTag(g.TagKey).ToAws())
@@ -234,33 +288,51 @@ func (a *aggregator) groupKeys(row Row) infra_sdk.CostSeriesGroupKeys {
 		}
 		keys = append(keys, infra_sdk.CostSeriesGroupKey{Name: g.Dimension, Value: value})
 	}
+	a.keyScratch = keys
 	return keys
 }
 
-func (a *aggregator) result() *infra_sdk.CostResult {
-	ordered := make([]*bucket, 0, len(a.buckets))
-	for _, b := range a.buckets {
-		ordered = append(ordered, b)
+// retainKeys copies scratch keys for a group that outlives the row. Dimension values are already
+// interned by the reader; tag values come out of the row's Tags map and are interned here.
+func (a *aggregator) retainKeys(scratch infra_sdk.CostSeriesGroupKeys) infra_sdk.CostSeriesGroupKeys {
+	keys := make(infra_sdk.CostSeriesGroupKeys, len(scratch))
+	for i, key := range scratch {
+		if key.TagKey != "" {
+			key.Value = a.tagValues.intern(key.Value)
+		}
+		keys[i] = key
 	}
-	sort.Slice(ordered, func(i, j int) bool {
-		if !ordered[i].start.Equal(ordered[j].start) {
-			return ordered[i].start.Before(ordered[j].start)
-		}
-		if ordered[i].currency != ordered[j].currency {
-			return ordered[i].currency < ordered[j].currency
-		}
-		return ordered[i].keys.UniqueIdentifier() < ordered[j].keys.UniqueIdentifier()
-	})
+	return keys
+}
 
+// result shapes the groups as a CostResult: one series per (group, metric) with its points in
+// period order. Series are assembled whole (AddSeries), so a group identifier is encoded once per
+// series rather than once per datapoint.
+func (a *aggregator) result() *infra_sdk.CostResult {
+	metrics := infra_sdk.AllCostMetrics()
 	result := infra_sdk.NewCostResult()
-	for _, b := range ordered {
-		for _, metric := range infra_sdk.AllCostMetrics() {
-			result.AddDatapoint(metric, b.keys, infra_sdk.CostSeriesDatapoint{
-				Start: b.start,
-				End:   b.end,
-				Unit:  b.currency,
-				Value: formatCost(b.sums[metric]),
-			})
+	for _, g := range a.groups {
+		ordered := make([]*bucket, 0, len(g.buckets))
+		for _, b := range g.buckets {
+			ordered = append(ordered, b)
+		}
+		sort.Slice(ordered, func(i, j int) bool {
+			if !ordered[i].start.Equal(ordered[j].start) {
+				return ordered[i].start.Before(ordered[j].start)
+			}
+			return ordered[i].currency < ordered[j].currency
+		})
+		for _, metric := range metrics {
+			points := make([]infra_sdk.CostSeriesDatapoint, 0, len(ordered))
+			for _, b := range ordered {
+				points = append(points, infra_sdk.CostSeriesDatapoint{
+					Start: b.start,
+					End:   b.end,
+					Unit:  b.currency,
+					Value: formatCost(b.sums.get(metric)),
+				})
+			}
+			result.AddSeries(infra_sdk.CostSeries{MetricName: metric, GroupKeys: g.keys, Points: points})
 		}
 	}
 	return result

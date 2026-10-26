@@ -68,22 +68,50 @@ var requiredColumns = []string{
 	colListCost, colContractedCost, colEffectiveCost, colBilledCost,
 }
 
+// interner hands out one shared copy of each distinct string. encoding/csv backs every field of
+// a record with one string for the whole line, so a field kept past the record (a resource id
+// in an aggregation bucket) would otherwise pin the entire line, Tags column included. Interning
+// also means the few thousand distinct accounts, services and resources of a month are held
+// once, however many rows mention them.
+type interner struct {
+	strings map[string]string
+}
+
+func newInterner() interner {
+	return interner{strings: map[string]string{}}
+}
+
+func (in interner) intern(s string) string {
+	if s == "" {
+		return ""
+	}
+	if cur, ok := in.strings[s]; ok {
+		return cur
+	}
+	s = strings.Clone(s)
+	in.strings[s] = s
+	return s
+}
+
 // ReadRows streams every data file, calling fn once per line item. Files are read straight
 // from S3 through gzip and csv; nothing is buffered beyond one record. Zero-byte files (the
-// spare chunks Data Exports leaves behind when a refresh shrinks) are skipped.
+// spare chunks Data Exports leaves behind when a refresh shrinks) are skipped. The string
+// fields of a Row are interned across the whole read, so fn may keep them without holding on
+// to the lines they came from.
 func ReadRows(ctx context.Context, api S3API, bucket string, keys []string, fn func(Row) error) error {
+	in := newInterner()
 	for _, key := range keys {
 		if !IsCsvGzip(key) {
 			return fmt.Errorf("%w: %s", ErrUnsupportedFormat, key)
 		}
-		if err := readFile(ctx, api, bucket, key, fn); err != nil {
+		if err := readFile(ctx, api, bucket, key, in, fn); err != nil {
 			return fmt.Errorf("error reading s3://%s/%s: %w", bucket, key, err)
 		}
 	}
 	return nil
 }
 
-func readFile(ctx context.Context, api S3API, bucket, key string, fn func(Row) error) error {
+func readFile(ctx context.Context, api S3API, bucket, key string, in interner, fn func(Row) error) error {
 	out, err := api.GetObject(ctx, &s3.GetObjectInput{Bucket: ptr(bucket), Key: ptr(key)})
 	if err != nil {
 		return err
@@ -101,12 +129,16 @@ func readFile(ctx context.Context, api S3API, bucket, key string, fn func(Row) e
 		return fmt.Errorf("error opening gzip: %w", err)
 	}
 	defer gz.Close()
-	return ReadCsv(gz, fn)
+	return readCsv(gz, in, fn)
 }
 
 // ReadCsv parses one FOCUS csv stream. Columns are resolved from the header row by name so
 // column order does not matter.
 func ReadCsv(r io.Reader, fn func(Row) error) error {
+	return readCsv(r, newInterner(), fn)
+}
+
+func readCsv(r io.Reader, in interner, fn func(Row) error) error {
 	cr := csv.NewReader(r)
 	cr.ReuseRecord = true
 	cr.FieldsPerRecord = -1
@@ -145,11 +177,11 @@ func ReadCsv(r io.Reader, fn func(Row) error) error {
 			return fmt.Errorf("line %d: %w", line, err)
 		}
 		row := Row{
-			SubAccountId:    field(rec, colSubAccountId),
-			ServiceName:     field(rec, colServiceName),
-			ChargeCategory:  field(rec, colChargeCategory),
-			ResourceId:      field(rec, colResourceId),
-			BillingCurrency: field(rec, colBillingCurrency),
+			SubAccountId:    in.intern(field(rec, colSubAccountId)),
+			ServiceName:     in.intern(field(rec, colServiceName)),
+			ChargeCategory:  in.intern(field(rec, colChargeCategory)),
+			ResourceId:      in.intern(field(rec, colResourceId)),
+			BillingCurrency: in.intern(field(rec, colBillingCurrency)),
 		}
 		if row.ChargePeriodStart, err = parseTimestamp(field(rec, colChargePeriodStart)); err != nil {
 			return fmt.Errorf("line %d: invalid ChargePeriodStart: %w", line, err)
