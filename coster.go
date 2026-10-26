@@ -2,9 +2,7 @@ package infra_sdk
 
 import (
 	"context"
-	"fmt"
 	"slices"
-	"strings"
 	"time"
 )
 
@@ -188,8 +186,21 @@ type CostResult struct {
 	Series map[string]CostSeries `json:"series"`
 }
 
+// CostSeriesKey is the key a series lives under in CostResult.Series: the encoded group keys
+// and the metric name.
+func CostSeriesKey(groupKeys CostSeriesGroupKeys, metric CostMetric) string {
+	return groupKeys.UniqueIdentifier() + ":" + string(metric)
+}
+
+// AddSeries stores a complete series, replacing any series already present for the same group
+// keys and metric. Costers that assemble a series' points themselves use it instead of calling
+// AddDatapoint once per point, which re-encodes the group keys every time.
+func (r *CostResult) AddSeries(series CostSeries) {
+	r.Series[CostSeriesKey(series.GroupKeys, series.MetricName)] = series
+}
+
 func (r *CostResult) AddDatapoint(metric CostMetric, groupKeys CostSeriesGroupKeys, datapoint CostSeriesDatapoint) {
-	seriesKey := fmt.Sprintf("%s:%s", groupKeys.UniqueIdentifier(), metric)
+	seriesKey := CostSeriesKey(groupKeys, metric)
 	cur, ok := r.Series[seriesKey]
 	if !ok {
 		cur = CostSeries{
@@ -205,7 +216,7 @@ func (r *CostResult) AddDatapoint(metric CostMetric, groupKeys CostSeriesGroupKe
 // MergeDatapoint acts like AddDatapoint except it will not add a duplicate datapoint
 // This is detected by comparing start+end times on the datapoint
 func (r *CostResult) MergeDatapoint(metric CostMetric, groupKeys CostSeriesGroupKeys, datapoint CostSeriesDatapoint) {
-	seriesKey := fmt.Sprintf("%s:%s", groupKeys.UniqueIdentifier(), metric)
+	seriesKey := CostSeriesKey(groupKeys, metric)
 	cur, ok := r.Series[seriesKey]
 	if !ok {
 		cur = CostSeries{
@@ -249,7 +260,7 @@ func (r *CostResult) MergeSeries(series CostSeries, provider string) {
 	if provider == "" {
 		return
 	}
-	seriesKey := fmt.Sprintf("%s:%s", series.GroupKeys.UniqueIdentifier(), series.MetricName)
+	seriesKey := CostSeriesKey(series.GroupKeys, series.MetricName)
 	if cur, ok := r.Series[seriesKey]; ok && cur.Provider == "" {
 		cur.Provider = provider
 		r.Series[seriesKey] = cur
@@ -259,15 +270,24 @@ func (r *CostResult) MergeSeries(series CostSeries, provider string) {
 type CostSeriesGroupKeys []CostSeriesGroupKey
 
 func (s CostSeriesGroupKeys) UniqueIdentifier() string {
-	sb := strings.Builder{}
+	size := 0
+	for _, key := range s {
+		size += len(key.Name) + len(key.TagKey) + len(key.Value) + 2
+	}
+	return string(s.AppendIdentifier(make([]byte, 0, size)))
+}
+
+// AppendIdentifier writes UniqueIdentifier() onto buf and returns it. Aggregators that look a
+// row's group up by identifier use it with a reused buffer so the lookup allocates nothing.
+func (s CostSeriesGroupKeys) AppendIdentifier(buf []byte) []byte {
 	for i, key := range s {
 		if i > 0 {
 			// add delimiter before index 1+
-			sb.WriteString(";")
+			buf = append(buf, ';')
 		}
-		sb.WriteString(key.Encode())
+		buf = key.AppendEncoded(buf)
 	}
-	return sb.String()
+	return buf
 }
 
 // CostSeriesGroupKey represents a grouping dimension for a cost series.
@@ -282,10 +302,18 @@ type CostSeriesGroupKey struct {
 // Encode creates a single string that can be decoded consistently
 // We use `>` between name/tag-key and value since it's an invalid character for aws tags, gcp labels, k8s labels, etc.
 func (k CostSeriesGroupKey) Encode() string {
+	return string(k.AppendEncoded(nil))
+}
+
+// AppendEncoded writes Encode() onto buf and returns it.
+func (k CostSeriesGroupKey) AppendEncoded(buf []byte) []byte {
 	if k.TagKey != "" {
-		return fmt.Sprintf("%s$%s", k.TagKey, k.Value)
+		buf = append(buf, k.TagKey...)
+	} else {
+		buf = append(buf, k.Name...)
 	}
-	return fmt.Sprintf("%s$%s", k.Name, k.Value)
+	buf = append(buf, '$')
+	return append(buf, k.Value...)
 }
 
 // CostSeriesDatapoint represents a single datapoint in a cost series.
