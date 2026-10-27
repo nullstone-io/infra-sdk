@@ -93,7 +93,7 @@ func (c Coster) GetCosts(ctx context.Context, query infra_sdk.CostQuery) (*infra
 // memory does not grow with the month. The row, its GroupKeys and its Values are reused and only
 // valid until fn returns.
 func (c Coster) ScanCosts(ctx context.Context, query infra_sdk.CostQuery, fn func(infra_sdk.CostRow) error) error {
-	p, err := newAggregator(query)
+	p, err := newProjector(query)
 	if err != nil {
 		return err
 	}
@@ -144,23 +144,31 @@ func MonthsInRange(start, end time.Time) []time.Time {
 	return months
 }
 
-// aggregator folds rows into buckets: one group (the distinct group-key values) holds one bucket
-// per period and currency with the four summed measures. Memory scales with the number of
-// distinct buckets, never with the number of rows, and a row that lands in an existing group
-// allocates nothing: its group identifier is encoded into a scratch buffer and looked up as is.
-type aggregator struct {
+// projector applies a query to export rows: the window and tag filters, and the projection of a
+// row onto the query's group keys and period. It holds nothing per row, so ScanCosts streams
+// through it in constant memory.
+type projector struct {
 	query   infra_sdk.CostQuery
 	groupBy infra_sdk.CostGroupIdentifiers
 	filters []tagFilter
-	groups  map[string]*group
+	// keyScratch is reused per row to build the group keys without allocating; values is the
+	// reused measure map of an emitted row.
+	keyScratch infra_sdk.CostSeriesGroupKeys
+	values     map[infra_sdk.CostMetric]float64
+}
+
+// aggregator folds projected rows into buckets: one group (the distinct group-key values) holds
+// one bucket per period and currency with the four summed measures. Memory scales with the
+// number of distinct buckets, never with the number of rows, and a row that lands in an existing
+// group allocates nothing: its group identifier is encoded into a scratch buffer and looked up as is.
+type aggregator struct {
+	projector
+	groups map[string]*group
 	// tagValues dedupes the tag values copied into group keys, so a stack name that appears on
 	// every row is held once rather than once per group.
 	tagValues interner
-	// keyScratch and idScratch are reused per row to build the group identifier without allocating;
-	// values is the reused measure map of an emitted row.
-	keyScratch infra_sdk.CostSeriesGroupKeys
-	idScratch  []byte
-	values     map[infra_sdk.CostMetric]float64
+	// idScratch is reused per row to encode the group identifier without allocating.
+	idScratch []byte
 }
 
 type tagFilter struct {
@@ -214,7 +222,7 @@ func (s costSums) get(metric infra_sdk.CostMetric) float64 {
 	return 0
 }
 
-func newAggregator(query infra_sdk.CostQuery) (*aggregator, error) {
+func newProjector(query infra_sdk.CostQuery) (*projector, error) {
 	groupBy := query.GroupBy.Unique()
 	for _, g := range groupBy {
 		if g.Dimension == "" {
@@ -231,19 +239,25 @@ func newAggregator(query infra_sdk.CostQuery) (*aggregator, error) {
 	for _, f := range query.FilterTags {
 		filters = append(filters, tagFilter{awsKey: aws_names.UniversalTag(f.Key).ToAws(), filter: f})
 	}
-	return &aggregator{
+	return &projector{
 		query:      query,
 		groupBy:    groupBy,
 		filters:    filters,
-		groups:     map[string]*group{},
-		tagValues:  newInterner(),
 		keyScratch: make(infra_sdk.CostSeriesGroupKeys, 0, len(groupBy)),
 		values:     make(map[infra_sdk.CostMetric]float64, 4),
 	}, nil
 }
 
+func newAggregator(query infra_sdk.CostQuery) (*aggregator, error) {
+	p, err := newProjector(query)
+	if err != nil {
+		return nil, err
+	}
+	return &aggregator{projector: *p, groups: map[string]*group{}, tagValues: newInterner()}, nil
+}
+
 // accepts applies the query window and tag filters to a row.
-func (a *aggregator) accepts(row Row) bool {
+func (a *projector) accepts(row Row) bool {
 	if row.ChargePeriodStart.Before(a.query.Start) || !row.ChargePeriodStart.Before(a.query.End) {
 		return false
 	}
@@ -256,8 +270,8 @@ func (a *aggregator) accepts(row Row) bool {
 }
 
 // emit hands one accepted row to fn projected onto the query's group keys and period, without
-// bucketing it. The CostRow reuses the aggregator's scratch keys and values.
-func (a *aggregator) emit(row Row, fn func(infra_sdk.CostRow) error) error {
+// bucketing it. The CostRow reuses the projector's scratch keys and values.
+func (a *projector) emit(row Row, fn func(infra_sdk.CostRow) error) error {
 	if !a.accepts(row) {
 		return nil
 	}
@@ -309,7 +323,7 @@ func (f tagFilter) matches(tags map[string]string) bool {
 	return false
 }
 
-func (a *aggregator) period(t time.Time) (time.Time, time.Time) {
+func (a *projector) period(t time.Time) (time.Time, time.Time) {
 	if a.query.Granularity == infra_sdk.CostGranularityMonthly {
 		start := time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, time.UTC)
 		return start, start.AddDate(0, 1, 0)
@@ -320,7 +334,7 @@ func (a *aggregator) period(t time.Time) (time.Time, time.Time) {
 
 // groupKeys builds the row's group keys into the reusable scratch slice. The result is only
 // valid until the next call; retainKeys copies it for a new group.
-func (a *aggregator) groupKeys(row Row) infra_sdk.CostSeriesGroupKeys {
+func (a *projector) groupKeys(row Row) infra_sdk.CostSeriesGroupKeys {
 	keys := a.keyScratch[:0]
 	for _, g := range a.groupBy {
 		if g.TagKey != "" {
