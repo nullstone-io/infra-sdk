@@ -110,6 +110,44 @@ func (c Coster) GetCosts(ctx context.Context, query infra_sdk.CostQuery) (*infra
 	return result, nil
 }
 
+// ScanCosts answers the query as rows, month by month from the source that covers each month,
+// in the same order GetCosts would merge them. An exported stretch streams straight from the
+// Data Export; a Cost Explorer stretch is read whole (its results are small) and handed over row
+// by row. Hourly granularity is always Cost Explorer.
+func (c Coster) ScanCosts(ctx context.Context, query infra_sdk.CostQuery, fn func(infra_sdk.CostRow) error) error {
+	ce := c.costExplorerCoster()
+	export := c.exportCoster()
+	if export == nil || query.Granularity == infra_sdk.CostGranularityHourly {
+		return scanSource(ctx, ce, query, fn)
+	}
+
+	runs, err := c.sourceRuns(ctx, query)
+	if err != nil {
+		return err
+	}
+	for _, run := range runs {
+		sub := query
+		sub.Start, sub.End = run.start, run.end
+		if err := scanSource(ctx, run.coster(ce, export), sub, fn); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// scanSource streams rows from a source through its scanner when it has one, else through its
+// materialised result.
+func scanSource(ctx context.Context, source infra_sdk.Coster, query infra_sdk.CostQuery, fn func(infra_sdk.CostRow) error) error {
+	if scanner, ok := source.(infra_sdk.CostScanner); ok {
+		return scanner.ScanCosts(ctx, query, fn)
+	}
+	res, err := source.GetCosts(ctx, query)
+	if err != nil {
+		return err
+	}
+	return res.EachRow(fn)
+}
+
 // sourceRun is a contiguous stretch of [start, end) answered by one source.
 type sourceRun struct {
 	start, end time.Time
