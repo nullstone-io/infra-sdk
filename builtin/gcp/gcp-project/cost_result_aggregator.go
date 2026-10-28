@@ -30,36 +30,55 @@ var metricColumns = []struct {
 }
 
 func (a *CostResultAggregator) AddRow(row map[string]bigquery.Value, groupBy infra_sdk.CostGroupIdentifiers) error {
-	periodStart, err := toTime(row["period_start"])
+	costRow, err := toCostRow(row, groupBy)
 	if err != nil {
-		return fmt.Errorf("error parsing period_start: %w", err)
+		return err
 	}
-	periodEnd, err := toTime(row["period_end"])
-	if err != nil {
-		return fmt.Errorf("error parsing period_end: %w", err)
-	}
-
-	currency, _ := row["currency"].(string)
-	groupKeys := a.parseGroupKeys(row, groupBy)
-
 	for _, mc := range metricColumns {
-		value, ok := row[mc.column].(float64)
+		value, ok := costRow.Values[mc.metric]
 		if !ok {
-			// a NULL aggregate means the export has no rows for this measure; report nothing rather than zero
 			continue
 		}
-		a.CostResult.AddDatapoint(mc.metric, groupKeys, infra_sdk.CostSeriesDatapoint{
-			Start: periodStart,
-			End:   periodEnd,
-			Unit:  currency,
+		a.CostResult.AddDatapoint(mc.metric, costRow.GroupKeys, infra_sdk.CostSeriesDatapoint{
+			Start: costRow.Start,
+			End:   costRow.End,
+			Unit:  costRow.Currency,
 			Value: fmt.Sprintf("%f", value),
 		})
 	}
-
 	return nil
 }
 
-func (a *CostResultAggregator) parseGroupKeys(row map[string]bigquery.Value, groupBy infra_sdk.CostGroupIdentifiers) infra_sdk.CostSeriesGroupKeys {
+// toCostRow projects one query result row onto a CostRow: its period, currency, the group keys
+// in groupBy order, and every measure the row reports. A NULL aggregate means the export has no
+// rows for that measure, so the metric is left out rather than reported as zero.
+func toCostRow(row map[string]bigquery.Value, groupBy infra_sdk.CostGroupIdentifiers) (infra_sdk.CostRow, error) {
+	periodStart, err := toTime(row["period_start"])
+	if err != nil {
+		return infra_sdk.CostRow{}, fmt.Errorf("error parsing period_start: %w", err)
+	}
+	periodEnd, err := toTime(row["period_end"])
+	if err != nil {
+		return infra_sdk.CostRow{}, fmt.Errorf("error parsing period_end: %w", err)
+	}
+	currency, _ := row["currency"].(string)
+
+	values := make(map[infra_sdk.CostMetric]float64, len(metricColumns))
+	for _, mc := range metricColumns {
+		if value, ok := row[mc.column].(float64); ok {
+			values[mc.metric] = value
+		}
+	}
+	return infra_sdk.CostRow{
+		GroupKeys: parseGroupKeys(row, groupBy),
+		Start:     periodStart,
+		End:       periodEnd,
+		Currency:  currency,
+		Values:    values,
+	}, nil
+}
+
+func parseGroupKeys(row map[string]bigquery.Value, groupBy infra_sdk.CostGroupIdentifiers) infra_sdk.CostSeriesGroupKeys {
 	result := make(infra_sdk.CostSeriesGroupKeys, 0, len(groupBy))
 	for i, grp := range groupBy {
 		if grp.Dimension != "" {
